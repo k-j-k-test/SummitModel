@@ -1,0 +1,56 @@
+<DockingManager version="1.3.0">
+    <ResizingPanel ResizeWidth="*" ResizeHeight="*" EffectiveSize="0,0" Orientation="Vertical">
+        <ResizingPanel ResizeWidth="*" ResizeHeight="*" EffectiveSize="1920,944" Orientation="Horizontal">
+            <DockablePane ResizeWidth="251" ResizeHeight="*" EffectiveSize="251,944" ID="4b6a1236-66d8-480d-80c2-5fb4e6236fef" Anchor="Left" IsAutoHidden="false">
+                <DockableContent Name="ICSharpCode_SharpDevelop_Project_ProjectBrowserPad" FloatingWindowSize="250,400" ChildIndex="0" Width="174" Height="617" Anchor="Left" State="Docked" />
+            </DockablePane>
+            <ResizingPanel ResizeWidth="*" ResizeHeight="*" EffectiveSize="1205,944" Orientation="Vertical">
+                <DocumentPaneResizingPanel ResizeWidth="*" ResizeHeight="*" EffectiveSize="1205,769.5" Orientation="Vertical">
+                    <DocumentPane IsMain="true" ResizeWidth="*" ResizeHeight="*" EffectiveSize="1205,770" />
+                </DocumentPaneResizingPanel>
+                <ResizingPanel ResizeWidth="*" ResizeHeight="168.5" EffectiveSize="1205,168.5" Orientation="Horizontal">
+                    <DockablePane ResizeWidth="*" ResizeHeight="*" EffectiveSize="1205,168" ID="da72d1b8-39c3-4338-8483-02b3136c2d29" Anchor="Bottom" IsAutoHidden="false">
+                        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_DefinitionViewPad" FloatingWindowSize="250,400" ChildIndex="1" Width="846" Height="144" Anchor="Bottom" State="Docked" />
+                    </DockablePane>
+                </ResizingPanel>
+                <DockablePane ResizeWidth="*" ResizeHeight="188" EffectiveSize="879,188" ID="77255f09-b21a-490d-83a7-af0d08551048" Anchor="Bottom" IsAutoHidden="false" />
+            </ResizingPanel>
+            <ResizingPanel ResizeWidth="452" ResizeHeight="*" EffectiveSize="452,944" Orientation="Vertical">
+                <DockablePane ResizeWidth="0.791864269952552*" ResizeHeight="0.791864269952552*" EffectiveSize="452,742.768685215494" ID="9bb68751-4ad1-4e6e-8f46-a9830486c40f" Anchor="Right" IsAutoHidden="false">
+                    <DockableContent Name="ICSharpCode_SharpDevelop_Dom_ClassBrowser_ClassBrowserPad" FloatingWindowSize="250,400" ChildIndex="0" Width="383" Height="944" Anchor="Right" State="Docked" />
+                </DockablePane>
+                <DockablePane ResizeWidth="0.208135730047448*" ResizeHeight="0.208135730047448*" EffectiveSize="452,195.231314784506" ID="a551e447-4fdf-4611-8044-17fd773a6a1f" Anchor="Right" IsAutoHidden="false">
+                    <DockableContent Name="ICSharpCode_SharpDevelop_Gui_ErrorListPad" FloatingWindowSize="250,400" ChildIndex="0" Width="385" Height="144" Anchor="Bottom" State="Docked" />
+                </DockablePane>
+            </ResizingPanel>
+        </ResizingPanel>
+    </ResizingPanel>
+    <Hidden>
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_OutlinePad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Left" State="Docked" ContainerPaneID="fe30c4fd-5354-4cd2-9ea3-0c6fef2d4fbe" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_FileScout" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Left" State="Docked" ContainerPaneID="fe30c4fd-5354-4cd2-9ea3-0c6fef2d4fbe" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Editor_Search_SearchResultsPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Editor_Bookmarks_BookmarkPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_CodeCoverage_CodeCoveragePad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_UnitTesting_UnitTestsPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="d77a78d0-f52f-43ca-8f31-314cd8d9b987" />
+        <DockableContent Name="FSharpBinding_FSharpInteractive" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_WixBinding_SetupDialogListPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_BreakPointsPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_CallStackPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_LoadedModulesPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_ThreadsPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_LocalVarPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_ConsolePad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_WatchPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_Data_Addin_Pad_DatabasesTreeViewPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="d77a78d0-f52f-43ca-8f31-314cd8d9b987" />
+        <DockableContent Name="ICSharpCode_WpfDesign_AddIn_ThumbnailViewPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="d77a78d0-f52f-43ca-8f31-314cd8d9b987" />
+        <DockableContent Name="ICSharpCode_XmlEditor_XPathQueryPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="MSHelpSystem_Controls_Help3TocPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="d77a78d0-f52f-43ca-8f31-314cd8d9b987" />
+        <DockableContent Name="MSHelpSystem_Controls_Help3SearchPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="d77a78d0-f52f-43ca-8f31-314cd8d9b987" />
+        <DockableContent Name="ICSharpCode_PackageManagement_Scripting_PackageManagementConsolePad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="fe0d467b-7a1a-4ce5-98cc-f74bec3d2e85" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_TaskListPad" FloatingWindowSize="250,400" ChildIndex="1" Width="1738" Height="188" Anchor="Bottom" State="Docked" ContainerPaneID="77255f09-b21a-490d-83a7-af0d08551048" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_PropertyPad" FloatingWindowSize="250,400" ChildIndex="0" Width="424" Height="743" Anchor="Right" State="Docked" ContainerPaneID="9bb68751-4ad1-4e6e-8f46-a9830486c40f" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_CompilerMessageView" FloatingWindowSize="250,400" ChildIndex="0" Width="1531" Height="188" Anchor="Bottom" State="Docked" ContainerPaneID="77255f09-b21a-490d-83a7-af0d08551048" />
+        <DockableContent Name="ICSharpCode_SharpDevelop_Gui_ToolsPad" FloatingWindowSize="250,400" ChildIndex="0" Width="200" Height="944" Anchor="Left" State="Docked" ContainerPaneID="4b6a1236-66d8-480d-80c2-5fb4e6236fef" />
+    </Hidden>
+    <Windows />
+</DockingManager>

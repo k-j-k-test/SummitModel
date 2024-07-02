@@ -13,8 +13,6 @@ using OfficeOpenXml.Style;
 using System.Drawing;
 using System.Diagnostics;
 using System.Collections;
-using System.Numerics;
-using OfficeOpenXml.FormulaParsing.Excel.Functions.Math;
 
 namespace ModelTest
 {

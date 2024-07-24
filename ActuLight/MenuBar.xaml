@@ -1,0 +1,21 @@
+﻿<UserControl x:Class="ActuLight.MenuBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ActuLight">
+    <Menu>
+        <MenuItem Header="파일">
+            <MenuItem Header="새로 만들기"/>
+            <MenuItem Header="열기"/>
+            <MenuItem Header="저장"/>
+            <MenuItem Header="종료"/>
+        </MenuItem>
+        <MenuItem Header="편집">
+            <MenuItem Header="잘라내기"/>
+            <MenuItem Header="복사"/>
+            <MenuItem Header="붙여넣기"/>
+        </MenuItem>
+        <MenuItem Header="도움말">
+            <MenuItem Header="정보"/>
+        </MenuItem>
+    </Menu>
+</UserControl>

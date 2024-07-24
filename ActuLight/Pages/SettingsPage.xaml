@@ -1,0 +1,19 @@
+﻿<Page x:Class="ActuLight.Pages.SettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="SettingsPage">
+    <Grid>
+        <StackPanel Margin="20">
+            <TextBlock Text="Application Settings" FontSize="24" Margin="0,0,0,20"/>
+            <TextBlock Text="Select Theme:" Margin="0,0,0,10"/>
+            <ComboBox x:Name="ThemeSelector" Width="200" HorizontalAlignment="Left" SelectionChanged="ThemeSelector_SelectionChanged">
+                <ComboBoxItem Content="Dark Grey Theme"/>
+                <ComboBoxItem Content="Deep Dark"/>
+                <ComboBoxItem Content="Grey Theme"/>
+                <ComboBoxItem Content="Light Theme"/>
+                <ComboBoxItem Content="Red Black Theme"/>
+                <ComboBoxItem Content="Soft Dark"/>
+            </ComboBox>
+        </StackPanel>
+    </Grid>
+</Page>

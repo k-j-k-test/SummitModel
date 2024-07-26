@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web.Caching;
 using Flee.PublicTypes;
+using System.Windows;
 
 namespace ActuLiteModel
 {
@@ -42,7 +45,7 @@ namespace ActuLiteModel
         {
             CompiledCell compiledCell = new CompiledCell(name, formula, description, this);
             CompiledCells[name] = compiledCell;
-            CompiledCells[name].GetTest();
+            //CompiledCells[name].GetTest();
         }
 
         public void Invoke(string cellName, int t)
@@ -51,7 +54,9 @@ namespace ActuLiteModel
             t = Math.Min(t, FleeFunc.Max_T);
             Engine.Context.Variables["t"] = t;
             Sheets[Name][cellName, t] = Sheets[Name].GetMethod(cellName)(t);
+            Sheets[Name].ClearCalculationStack();
         }
+
     }
 
     public class BaseModel
@@ -118,4 +123,5 @@ namespace ActuLiteModel
             }
         }
     }
+
 }

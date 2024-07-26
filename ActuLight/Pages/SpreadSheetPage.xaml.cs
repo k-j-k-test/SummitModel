@@ -30,16 +30,6 @@ namespace ActuLight.Pages
             SyntaxHighlighter = new SyntaxHighlighter(ScriptEditor);
             ScriptEditor.TextArea.TextView.LineTransformers.Add(SyntaxHighlighter);
             UpdateSyntaxHighlighter();
-
-            // ScriptEditor의 배경색을 진한 회색으로 설정 (Dark Theme)
-            ScriptEditor.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-
-            // 텍스트 색상을 밝은 회색으로 설정 (기본 텍스트 색상)
-            ScriptEditor.Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 220));
-
-            // 선택 영역의 배경색 설정
-            ScriptEditor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60));
-            ScriptEditor.TextArea.SelectionForeground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
@@ -175,46 +165,66 @@ namespace ActuLight.Pages
                 IsReadOnly = true
             };
 
-            var sheetData = sheet.GetAllData();
-            var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-            if (rows.Length > 0)
+            if (sheetName == "ErrorSheet")
             {
-                var headers = rows[0].Split('\t');
-
-                foreach (var header in headers)
+                // ErrorSheet의 경우 에러 메시지를 표시
+                dataGrid.Columns.Add(new DataGridTextColumn
                 {
-                    dataGrid.Columns.Add(new DataGridTextColumn
-                    {
-                        Header = header,
-                        Binding = new System.Windows.Data.Binding($"[{header}]")
-                    });
-                }
+                    Header = "Error Message",
+                    Binding = new System.Windows.Data.Binding("[ErrorMessage]")
+                });
 
-                var data = new List<Dictionary<string, string>>();
+                var errorMessage = CellStatusTextBlock.Text;
+                var data = new List<Dictionary<string, string>>
+        {
+            new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
+        };
 
-                for (int i = 1; i < rows.Length; i++)
+                dataGrid.ItemsSource = data;
+            }
+            else
+            {
+                var sheetData = sheet.GetAllData();
+                var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+
+                if (rows.Length > 0)
                 {
-                    var values = rows[i].Split('\t');
-                    var rowData = new Dictionary<string, string>();
-                    bool hasNonEmptyValue = false;
+                    var headers = rows[0].Split('\t');
 
-                    for (int j = 0; j < headers.Length && j < values.Length; j++)
+                    foreach (var header in headers)
                     {
-                        if (!string.IsNullOrWhiteSpace(values[j]))
+                        dataGrid.Columns.Add(new DataGridTextColumn
                         {
-                            rowData[headers[j]] = values[j];
-                            hasNonEmptyValue = true;
+                            Header = header,
+                            Binding = new System.Windows.Data.Binding($"[{header}]")
+                        });
+                    }
+
+                    var data = new List<Dictionary<string, string>>();
+
+                    for (int i = 1; i < rows.Length; i++)
+                    {
+                        var values = rows[i].Split('\t');
+                        var rowData = new Dictionary<string, string>();
+                        bool hasNonEmptyValue = false;
+
+                        for (int j = 0; j < headers.Length && j < values.Length; j++)
+                        {
+                            if (!string.IsNullOrWhiteSpace(values[j]))
+                            {
+                                rowData[headers[j]] = values[j];
+                                hasNonEmptyValue = true;
+                            }
+                        }
+
+                        if (hasNonEmptyValue)
+                        {
+                            data.Add(rowData);
                         }
                     }
 
-                    if (hasNonEmptyValue)
-                    {
-                        data.Add(rowData);
-                    }
+                    dataGrid.ItemsSource = data;
                 }
-
-                dataGrid.ItemsSource = data;
             }
 
             tabItem.Content = dataGrid;
@@ -273,7 +283,7 @@ namespace ActuLight.Pages
                     cellItems.Add(textBlock);
                 }
                 CellsList.ItemsSource = cellItems;
-                SyntaxHighlighter.UpdateModelCells(selectedModel, model.CompiledCells.Keys);
+                SyntaxHighlighter.UpdateModelCells(selectedModel, selectedCell, model.CompiledCells.Keys);
             }
             else
             {
@@ -330,28 +340,36 @@ namespace ActuLight.Pages
             // Clear all model sheets
             foreach (var m in Models.Values)
             {
-                //Models = new Dictionary<string, Model>();
                 m.Sheets.Clear();
-                m.Parameter = new Parameter();
             }
 
-            // Process each Invoke call
-            foreach (Match match in invokeMatches)
+            try
             {
-                string cellName = match.Groups[1].Value;
-                int t = int.Parse(match.Groups[2].Value);
-
-                try
+                // Process each Invoke call
+                foreach (Match match in invokeMatches)
                 {
+                    string cellName = match.Groups[1].Value;
+                    int t = int.Parse(match.Groups[2].Value);
+
                     model.Invoke(cellName, t);
                 }
-                catch (Exception ex)
-                {
-                    model.Sheets["ErrorSheet"] = new Sheet();
-                    model.Sheets["ErrorSheet"].RegisterMethod("ErrorMessage", _ => 0);
-                    model.Sheets["ErrorSheet"]["ErrorMessage", 0] = 0;
-                    CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
-                }
+            }
+            catch (Exception ex)
+            {
+                // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
+                model.Sheets.Clear();
+                var errorSheet = new Sheet();
+                errorSheet.RegisterMethod("Error", _ => 0);
+                errorSheet["Error", 0] = 0;  // 에러 표시를 위한 더미 데이터
+
+                // 에러 메시지를 별도의 메서드로 저장
+                errorSheet.RegisterMethod("ErrorMessage", _ => 0);
+                errorSheet["ErrorMessage", 0] = 0;
+
+                model.Sheets["ErrorSheet"] = errorSheet;
+
+                // CellStatusTextBlock 업데이트
+                CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
             }
 
             UpdateSheets();
@@ -406,10 +424,10 @@ namespace ActuLight.Pages
         {
             foreach (var model in Models.Values)
             {
-                SyntaxHighlighter.UpdateModelCells(model.Name, model.CompiledCells.Keys);
+                SyntaxHighlighter.UpdateModelCells(model.Name, selectedCell, model.CompiledCells.Keys);
             }
 
-            SyntaxHighlighter.UpdateModels(Models.Keys);
+            SyntaxHighlighter.UpdateModels(selectedModel, Models.Keys);
             SyntaxHighlighter.UpdateContextVariables(App.ModelEngine.Context.Variables.Keys);
             SyntaxHighlighter.UpdateAssumptions(App.ModelEngine.Assumptions.Keys);
         }

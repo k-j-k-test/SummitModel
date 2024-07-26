@@ -45,12 +45,18 @@
             <DockPanel Grid.Column="0">
                 <Label DockPanel.Dock="Top" Content="Script"/>
                 <avalonEdit:TextEditor
-            x:Name="ScriptEditor"
-            SyntaxHighlighting="C#"
-            FontFamily="Consolas"
-            FontSize="10pt"
-            ShowLineNumbers="True"
-            TextChanged="ScriptEditor_TextChanged"/>
+                    x:Name="ScriptEditor"
+                    SyntaxHighlighting="C#"
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                    ShowLineNumbers="True"
+                    TextChanged="ScriptEditor_TextChanged">
+                    <avalonEdit:TextEditor.Options>
+                        <avalonEdit:TextEditorOptions ShowSpaces="True" EnableHyperlinks="True" />
+                    </avalonEdit:TextEditor.Options>
+                </avalonEdit:TextEditor>
             </DockPanel>
 
             <!-- 하단 GridSplitter -->

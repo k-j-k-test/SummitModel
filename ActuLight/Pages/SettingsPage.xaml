@@ -6,13 +6,9 @@
         <StackPanel Margin="20">
             <TextBlock Text="Application Settings" FontSize="24" Margin="0,0,0,20"/>
             <TextBlock Text="Select Theme:" Margin="0,0,0,10"/>
-            <ComboBox x:Name="ThemeSelector" Width="200" HorizontalAlignment="Left" SelectionChanged="ThemeSelector_SelectionChanged">
-                <ComboBoxItem Content="Dark Grey Theme"/>
-                <ComboBoxItem Content="Deep Dark"/>
-                <ComboBoxItem Content="Grey Theme"/>
+            <ComboBox x:Name="ThemeSelector" Width="200" SelectionChanged="ThemeSelector_SelectionChanged">
                 <ComboBoxItem Content="Light Theme"/>
-                <ComboBoxItem Content="Red Black Theme"/>
-                <ComboBoxItem Content="Soft Dark"/>
+                <ComboBoxItem Content="Dark Theme"/>
             </ComboBox>
         </StackPanel>
     </Grid>

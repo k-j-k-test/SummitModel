@@ -1,20 +1,18 @@
 ﻿<Window x:Class="ActuLight.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Spreadsheet Application" Height="600" Width="1000"
-        Style="{DynamicResource CustomWindowStyle}">
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="ActuLight" Height="600" Width="1000">
 
     <DockPanel>
-        <!-- 글로벌 메뉴 바 -->
-        <!--<ContentControl Content="{StaticResource GlobalMenuBar}" DockPanel.Dock="Top"/>-->
-
         <!-- 글로벌 네비게이션 바 -->
         <ContentControl Content="{StaticResource GlobalNavigationBar}" DockPanel.Dock="Top"/>
-
-        <!-- 테스트 버튼 추가 -->
-        <!--<Button Content="Run Test" Click="RunTestButton_Click" DockPanel.Dock="Top" Margin="10"/>-->
 
         <!-- 페이지 내용을 표시할 Frame -->
         <Frame x:Name="MainFrame" NavigationUIVisibility="Hidden"/>
     </DockPanel>
 </Window>
+    
+    
+    

@@ -3,53 +3,25 @@ using System.Text.Json;
 using System.Windows;
 using System.IO;
 using System.Text.Json;
+using ModernWpf;
 
 namespace ActuLight
 {
     public partial class App : Application
     {
-        public static AppSettingsManager Settings { get; private set; }
         public static ModelEngine ModelEngine { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
             ModelEngine = new ModelEngine();
-            Settings = AppSettingsManager.Load();
             LoadTheme();
         }
 
         private void LoadTheme()
         {
-            string themeName = Settings.CurrentTheme;
-
-            // ColourDictionaries 업데이트
-            UpdateResourceDictionary("ColourDictionaries", $"Themes/ColourDictionaries/{themeName}.xaml");
-
-            // ControlColours 업데이트
-            UpdateResourceDictionary("ControlColours", "Themes/ControlColours.xaml");
-
-            // Controls 업데이트
-            UpdateResourceDictionary("Controls", "Themes/Controls.xaml");
-        }
-
-        private void UpdateResourceDictionary(string dictionaryName, string newSource)
-        {
-            var resourceDict = Resources.MergedDictionaries
-                .FirstOrDefault(d => d.Source != null && d.Source.OriginalString.Contains(dictionaryName));
-
-            if (resourceDict != null)
-            {
-                resourceDict.Source = new Uri(newSource, UriKind.Relative);
-            }
-            else
-            {
-                // 해당 ResourceDictionary가 없으면 새로 추가
-                Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri(newSource, UriKind.Relative)
-                });
-            }
+            // 기본 테마를 Light로 설정
+            ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
         }
     }
 

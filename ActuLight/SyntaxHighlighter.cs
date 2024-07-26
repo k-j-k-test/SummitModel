@@ -12,14 +12,21 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Rendering;
 using ActuLiteModel;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TextBox;
-using System.Windows.Documents;
+using System.IO;
+using System.Text.Json;
+using ActuLight.Properties;
+using ModernWpf;
+using System.Windows.Data;
 
 namespace ActuLight
 {
     public class SyntaxHighlighter : DocumentColorizingTransformer
     {
-        private List<(Regex Regex, SolidColorBrush Brush)> _rules;
+        public static Dictionary<string, (Color Dark, Color Light, Color HighContrast)> ColorSchemes;
+
+        private string _currentModel;
+        private string _currentCell;
+
         private CompletionWindow _completionWindow;
         private readonly TextEditor _textEditor;
 
@@ -28,81 +35,107 @@ namespace ActuLight
         private HashSet<string> _contextVariables = new HashSet<string>();
         private HashSet<string> _assumptions = new HashSet<string>();
 
-        // Functions는 정적으로 유지
-        private static readonly string[] Functions = { "Invoke", "Sum", "Prd", "Assum", "If" };
+        private List<string> _functions = new List<string>();
+        private Dictionary<string, string> _cellCompletions = new Dictionary<string, string>();
 
         public SyntaxHighlighter(TextEditor textEditor)
         {
-            _textEditor = textEditor;
-            InitializeRules();
+            LoadAutoCompletionSet();
 
+            _textEditor = textEditor;
             _textEditor.TextArea.TextEntered += TextArea_TextEntered;
+
+            // 테마 변경 이벤트 구독
+            ThemeManager.Current.ActualApplicationThemeChanged += Current_ActualApplicationThemeChanged;
+
+            // TextEditor 스타일 설정
+            SetTextEditorStyle();
+
+            ColorSchemes = new Dictionary<string, (Color Dark, Color Light, Color HighContrast)>
+            {
+                ["Comment"] = (Colors.LightGreen, Colors.Green, Colors.LimeGreen),
+                ["Separator"] = (Colors.LightGray, Colors.Gray, Colors.DarkGray),
+                ["Function"] = (Colors.Khaki, Colors.DarkKhaki, Colors.PaleGoldenrod),
+                ["Number"] = (Colors.LightSeaGreen, Colors.MediumSeaGreen, Colors.Aquamarine),
+                ["String"] = (Colors.LightSalmon, Colors.Salmon, Colors.Coral),
+                ["Boolean"] = (Colors.SkyBlue, Colors.DeepSkyBlue, Colors.LightSkyBlue),
+                ["Model"] = (Colors.PaleTurquoise, Colors.MediumTurquoise, Colors.Turquoise),
+                ["Cell"] = (Colors.Plum, Colors.MediumPurple, Colors.Violet),
+                ["ContextVariable"] = (Colors.PaleGreen, Colors.MediumAquamarine, Colors.LightGreen)
+            };
         }
 
-        private void InitializeRules()
+        private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
         {
-            _rules = new List<(Regex Regex, SolidColorBrush Brush)>
-            {
-                (new Regex(@"//.*"), new SolidColorBrush(Colors.LightGreen)),           // 주석
-                (new Regex(@"--"), new SolidColorBrush(Colors.Gray)),                   // 구분자
-                (new Regex($@"\b({string.Join("|", Functions)})\b"), new SolidColorBrush(Colors.LightSkyBlue)),  // 함수
-                (new Regex(@"\b\d+(\.\d+)?\b"), new SolidColorBrush(Colors.Gold)),      // 숫자
-                (new Regex(@"""(?:\\.|[^""\\])*"""), new SolidColorBrush(Colors.LightGoldenrodYellow)),  // 문자열 (큰따옴표 안의 텍스트)
-                (new Regex(@"\b(true|false)\b"), new SolidColorBrush(Colors.Orange))    // boolean 값
-            };
+            _textEditor.TextArea.TextView.Redraw();
+        }
+
+        private void SetTextEditorStyle()
+        {
+            _textEditor.FontFamily = new FontFamily("Consolas");
+            _textEditor.FontSize = 12;
+            _textEditor.ShowLineNumbers = true;
+            _textEditor.Options.EnableHyperlinks = true;
+            _textEditor.Options.EnableEmailHyperlinks = true;
+
+            // 배경색과 전경색을 테마에 따라 동적으로 설정
+            _textEditor.SetResourceReference(TextEditor.BackgroundProperty, "SystemControlBackgroundAltHighBrush");
+            _textEditor.SetResourceReference(TextEditor.ForegroundProperty, "SystemControlForegroundBaseHighBrush");
+
+            // 선택 영역 스타일 설정
+            _textEditor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(60, 51, 153, 255));
+            _textEditor.TextArea.SelectionForeground = null;  // 선택된 텍스트의 전경색은 변경하지 않음
+
+            // 현재 줄 강조 설정
+            _textEditor.TextArea.TextView.CurrentLineBackground = new SolidColorBrush(Color.FromArgb(40, 0, 0, 0));
+            _textEditor.TextArea.TextView.CurrentLineBorder = new Pen(new SolidColorBrush(Color.FromArgb(40, 0, 0, 0)), 2);
         }
 
         protected override void ColorizeLine(DocumentLine line)
         {
             string text = CurrentContext.Document.GetText(line);
+            var theme = ThemeManager.Current.ActualApplicationTheme;
 
-            // 기존 규칙 적용
-            foreach (var (regex, brush) in _rules)
+            ApplyColorRule(line, text, @"//.*", "Comment");
+            ApplyColorRule(line, text, @"--", "Separator");
+            ApplyColorRule(line, text, @"\b\d+(\.\d+)?\b", "Number");
+            ApplyColorRule(line, text, @"""(?:\\.|[^""\\])*""", "String");
+            ApplyColorRule(line, text, @"\b(true|false)\b", "Boolean");
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _functions)})\b", "Function");
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _models)})\b", "Model");
+            if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
             {
-                foreach (Match match in regex.Matches(text))
-                {
-                    ChangeLinePart(
-                        line.Offset + match.Index,
-                        line.Offset + match.Index + match.Length,
-                        element => element.TextRunProperties.SetForegroundBrush(brush)
-                    );
-                }
+                ApplyColorRule(line, text, $@"\b({string.Join("|", currentModelCells)})\b", "Cell");
             }
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _contextVariables)})\b", "ContextVariable");
+        }
 
-            // 모델 하이라이팅
-            var modelRegex = new Regex($@"\b({string.Join("|", _models)})\b");
-            foreach (Match match in modelRegex.Matches(text))
-            {
-                ChangeLinePart(
-                    line.Offset + match.Index,
-                    line.Offset + match.Index + match.Length,
-                    element => element.TextRunProperties.SetForegroundBrush(new SolidColorBrush(Colors.HotPink))
-                );
-            }
+        private void ApplyColorRule(DocumentLine line, string text, string pattern, string colorKey)
+        {
+            var regex = new Regex(pattern);
+            var brush = GetThemeColor(colorKey);
 
-            // Cell에 대한 동적 규칙 적용
-            var cellRegex = new Regex($@"\b({string.Join("|", _modelCells.Values.SelectMany(x => x))})\b");
-            foreach (Match match in cellRegex.Matches(text))
+            foreach (Match match in regex.Matches(text))
             {
                 ChangeLinePart(
                     line.Offset + match.Index,
                     line.Offset + match.Index + match.Length,
-                    element => element.TextRunProperties.SetForegroundBrush(new SolidColorBrush(Colors.Orange))
+                    element => element.TextRunProperties.SetForegroundBrush(brush)
                 );
             }
+        }
 
-            // Context 변수 하이라이팅
-            var contextVarRegex = new Regex($@"\b({string.Join("|", _contextVariables)})\b");
-            foreach (Match match in contextVarRegex.Matches(text))
+        private SolidColorBrush GetThemeColor(string colorKey)
+        {
+            var theme = ThemeManager.Current.ActualApplicationTheme;
+            var (dark, light, highContrast) = ColorSchemes[colorKey];
+
+            return theme switch
             {
-                ChangeLinePart(
-                    line.Offset + match.Index,
-                    line.Offset + match.Index + match.Length,
-                    element => element.TextRunProperties.SetForegroundBrush(new SolidColorBrush(Colors.LightBlue))
-                );
-            }
-
-            // 가정 하이라이팅
+                ApplicationTheme.Dark => new SolidColorBrush(dark),
+                ApplicationTheme.Light => new SolidColorBrush(light),
+                _ => new SolidColorBrush(highContrast)
+            };
         }
 
         private async void TextArea_TextEntered(object sender, TextCompositionEventArgs e)
@@ -111,14 +144,34 @@ namespace ActuLight
 
             if (!(sender is TextArea textArea)) return;
 
+            string currentLine = GetCurrentLine(textArea);
             string currentWord = GetCurrentWord(textArea);
-            if (string.IsNullOrEmpty(currentWord))
+
+            var completionData = new List<ICompletionData>();
+
+            if (currentLine.Contains("--"))
+            {
+                var parts = currentLine.Split(new[] { "--" }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && parts[1].Trim() == "")
+                {
+                    if (_cellCompletions.TryGetValue(parts[0].Trim(), out string completion))
+                    {
+                        completionData = new List<ICompletionData>
+                        {
+                            new CustomCompletionData(completion, CompletionType.CellCompletion)
+                        };
+                        ShowCompletionWindow(textArea, completionData, textArea.Caret.Offset);
+                    }
+                    return;
+                }
+            }
+
+            if (string.IsNullOrEmpty(currentWord) || !currentLine.Contains("--") || currentLine.IndexOf("--") >= textArea.Caret.Column)
             {
                 _completionWindow?.Close();
                 return;
             }
 
-            var completionData = new List<ICompletionData>();
 
             // Check if we're inside Assum function
             var textBeforeCaret = textArea.Document.GetText(0, textArea.Caret.Offset);
@@ -127,7 +180,7 @@ namespace ActuLight
             {
                 // We're inside Assum function, offer assumption completions
                 completionData.AddRange(_assumptions
-                    .Where(assumption => MatchesKoreanInitial(assumption, currentWord))
+                    .Where(assum => assum.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
                     .Select(assumption => new CustomCompletionData(assumption, CompletionType.Assumption)));
             }
             else
@@ -146,12 +199,16 @@ namespace ActuLight
                 else
                 {
                     // Add cell completions
-                    completionData.AddRange(_modelCells.Values.SelectMany(cells => cells)
-                        .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                    if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
+                    {
+                        completionData.AddRange(currentModelCells
+                            .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                            .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                    }
+
 
                     // Add function completions
-                    completionData.AddRange(Functions
+                    completionData.AddRange(_functions
                         .Where(func => func.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
                         .Select(func => new CustomCompletionData(func, CompletionType.Function)));
 
@@ -177,20 +234,26 @@ namespace ActuLight
             }
         }
 
-        private void ShowCompletionWindow(TextArea textArea, List<ICompletionData> completionData)
+        private void ShowCompletionWindow(TextArea textArea, IEnumerable<ICompletionData> completionData, int? startOffset = null)
         {
             _completionWindow?.Close();
 
             _completionWindow = new CompletionWindow(textArea)
             {
                 ResizeMode = ResizeMode.NoResize,
-                OverridesDefaultStyle = false,
                 CloseWhenCaretAtBeginning = true,
                 CloseAutomatically = true,
             };
 
-            var currentWord = GetCurrentWord(textArea);
-            _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
+            if (startOffset.HasValue)
+            {
+                _completionWindow.StartOffset = startOffset.Value;
+            }
+            else
+            {
+                var currentWord = GetCurrentWord(textArea);
+                _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
+            }
 
             var dataList = _completionWindow.CompletionList.CompletionData;
             foreach (var data in completionData)
@@ -199,6 +262,18 @@ namespace ActuLight
             }
 
             _completionWindow.Show();
+
+            if (dataList.Count > 0)
+            {
+                _completionWindow.CompletionList.SelectedItem = dataList[0];
+            }
+        }
+
+        private static string GetCurrentLine(TextArea textArea)
+        {
+            var caretPosition = textArea.Caret.Offset;
+            var currentLine = textArea.Document.GetLineByOffset(caretPosition);
+            return textArea.Document.GetText(currentLine.Offset, currentLine.Length);
         }
 
         private static string GetCurrentWord(TextArea textArea)
@@ -210,20 +285,25 @@ namespace ActuLight
             return match.Success ? match.Value : string.Empty;
         }
 
-        public void UpdateModels(IEnumerable<string> models)
+        public void UpdateModels(string modelName, IEnumerable<string> models)
         {
+            _currentModel = modelName;
             _models = new HashSet<string>(models);
             _textEditor.TextArea.TextView.Redraw();
+
         }
 
-        public void UpdateModelCells(string modelName, IEnumerable<string> cells)
-        {
+        public void UpdateModelCells(string modelName, string cellName, IEnumerable<string> cells)
+        {         
             if (!_modelCells.ContainsKey(modelName))
             {
                 _modelCells[modelName] = new HashSet<string>();
             }
             _modelCells[modelName] = new HashSet<string>(cells);
             _textEditor.TextArea.TextView.Redraw();
+
+            _currentModel = modelName;
+            _currentCell = cellName;
         }
 
         public void UpdateContextVariables(IEnumerable<string> variables)
@@ -238,35 +318,24 @@ namespace ActuLight
             _textEditor.TextArea.TextView.Redraw();
         }
 
-        // 한글 초성 매칭 메서드
-        private bool MatchesKoreanInitial(string target, string input)
+        private void LoadAutoCompletionSet()
         {
-            if (string.IsNullOrEmpty(input)) return true;
-
-            var targetInitials = GetKoreanInitials(target);
-            var inputInitials = GetKoreanInitials(input);
-
-            return targetInitials.StartsWith(inputInitials, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // 한글 초성 추출 메서드
-        private string GetKoreanInitials(string text)
-        {
-            var result = new System.Text.StringBuilder();
-            foreach (char c in text)
+            string jsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AutoCompletion.json");
+            if (File.Exists(jsonPath))
             {
-                if (c >= '가' && c <= '힣')
-                {
-                    char initial = (char)((c - '가') / 588 + 'ㄱ');
-                    result.Append(initial);
-                }
-                else
-                {
-                    result.Append(c);
-                }
+                string json = File.ReadAllText(jsonPath);
+                var autoCompletionSet = JsonSerializer.Deserialize<AutoCompletionSet>(json);
+                _functions = autoCompletionSet.Functions;
+                _cellCompletions = autoCompletionSet.CellCompletions;
             }
-            return result.ToString();
+
         }
+    }
+
+    public class AutoCompletionSet
+    {
+        public List<string> Functions { get; set; }
+        public Dictionary<string, string> CellCompletions { get; set; }
     }
 
     public enum CompletionType
@@ -275,7 +344,8 @@ namespace ActuLight
         Function,
         Model,
         ContextVariable,
-        Assumption
+        Assumption,
+        CellCompletion
     }
 
     public class CustomCompletionData : ICompletionData
@@ -283,7 +353,7 @@ namespace ActuLight
         public CustomCompletionData(string text, CompletionType type)
         {
             Text = text;
-            CompletionType = type;
+            CompletionType = type;        
         }
 
         public ImageSource Image => null;
@@ -295,19 +365,40 @@ namespace ActuLight
 
         private TextBlock CreateTextBlock()
         {
+            var theme = ThemeManager.Current.ActualApplicationTheme;
+            var colorKey = CompletionType switch
+            {
+                CompletionType.Cell => "Cell",
+                CompletionType.Function => "Function",
+                CompletionType.Model => "Model",
+                CompletionType.ContextVariable => "ContextVariable",
+                CompletionType.Assumption => "ContextVariable", // 가정도 ContextVariable과 같은 색상 사용
+                CompletionType.CellCompletion => "Cell",
+                _ => "Default"
+            };
+
+            var color = GetThemeColor(colorKey, theme);
+
             return new TextBlock
             {
                 Text = Text,
-                Foreground = CompletionType switch
-                {
-                    CompletionType.Cell => Brushes.Orange,
-                    CompletionType.Function => Brushes.DarkCyan,
-                    CompletionType.Model => Brushes.HotPink,
-                    CompletionType.ContextVariable => Brushes.LightBlue,
-                    _ => Brushes.Black
-                },
-                FontSize = 11.5
+                Foreground = new SolidColorBrush(color),
+                FontSize = 11
             };
+        }
+
+        private Color GetThemeColor(string colorKey, ApplicationTheme theme)
+        {
+            if (SyntaxHighlighter.ColorSchemes.TryGetValue(colorKey, out var colors))
+            {
+                return theme switch
+                {
+                    ApplicationTheme.Dark => colors.Dark,
+                    ApplicationTheme.Light => colors.Light,
+                    _ => colors.HighContrast
+                };
+            }
+            return Colors.Black; // 기본 색상
         }
 
         public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
@@ -342,6 +433,24 @@ namespace ActuLight
             {
                 insertText = Text;
             }
+            else if (CompletionType == CompletionType.CellCompletion)
+            {
+                var currentLine = textArea.Document.GetLineByOffset(completionSegment.Offset);
+                var lineText = textArea.Document.GetText(currentLine.Offset, currentLine.Length);
+                var parts = lineText.Split(new[] { "--" }, StringSplitOptions.RemoveEmptyEntries);
+
+                if (parts.Length > 0)
+                {
+                    var cellName = parts[0].Trim();
+                    insertText = $"{cellName} -- {Text}";
+                    textArea.Document.Replace(currentLine.Offset, currentLine.Length, insertText);
+                    return;
+                }
+                else
+                {
+                    insertText = Text;
+                }
+            }
             else
             {
                 insertText = Text;
@@ -354,7 +463,7 @@ namespace ActuLight
             {
                 if (Text == "Assum")
                 {
-                    textArea.Caret.Offset -= 1;
+                    textArea.Caret.Offset -= 2;
                 }
                 else
                 {

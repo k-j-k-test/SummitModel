@@ -27,7 +27,7 @@ namespace ActuLiteModel
 
         public static double Assum(string modelName, int t, params object[] assumptionKeys)
         {
-            return GetAssumptionValue(modelName, Math.Min(t, Max_T), assumptionKeys.Select(x => x.ToString()).ToArray());
+           return GetAssumptionValue(modelName, Math.Min(t, Max_T), assumptionKeys.Select(x => x.ToString()).ToArray());
         }
 
         public static double Sum(string modelName, string var, int start, int end)

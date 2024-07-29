@@ -51,12 +51,16 @@ namespace ActuLiteModel
         public void Invoke(string cellName, int t)
         {
             AddSheet(Name);
-            t = Math.Min(t, FleeFunc.Max_T);
+            t = Math.Min(t, Sheet.MaxT);
             Engine.Context.Variables["t"] = t;
-            Sheets[Name][cellName, t] = Sheets[Name].GetMethod(cellName)(t);
-            Sheets[Name].ClearCalculationStack();
+            Sheets[Name][cellName, t] = Sheets[Name].GetMethod(cellName)(t);   
         }
 
+        public void Clear()
+        {
+            Parameter = new Parameter();
+            Sheets = new Dictionary<string, Sheet>();
+        }
     }
 
     public class BaseModel

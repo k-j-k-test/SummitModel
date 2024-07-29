@@ -65,79 +65,7 @@ namespace ActuLight
             };
         }
 
-        private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
-        {
-            _textEditor.TextArea.TextView.Redraw();
-        }
-
-        private void SetTextEditorStyle()
-        {
-            _textEditor.FontFamily = new FontFamily("Consolas");
-            _textEditor.FontSize = 12;
-            _textEditor.ShowLineNumbers = true;
-            _textEditor.Options.EnableHyperlinks = true;
-            _textEditor.Options.EnableEmailHyperlinks = true;
-
-            // 배경색과 전경색을 테마에 따라 동적으로 설정
-            _textEditor.SetResourceReference(TextEditor.BackgroundProperty, "SystemControlBackgroundAltHighBrush");
-            _textEditor.SetResourceReference(TextEditor.ForegroundProperty, "SystemControlForegroundBaseHighBrush");
-
-            // 선택 영역 스타일 설정
-            _textEditor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(60, 51, 153, 255));
-            _textEditor.TextArea.SelectionForeground = null;  // 선택된 텍스트의 전경색은 변경하지 않음
-
-            // 현재 줄 강조 설정
-            _textEditor.TextArea.TextView.CurrentLineBackground = new SolidColorBrush(Color.FromArgb(40, 0, 0, 0));
-            _textEditor.TextArea.TextView.CurrentLineBorder = new Pen(new SolidColorBrush(Color.FromArgb(40, 0, 0, 0)), 2);
-        }
-
-        protected override void ColorizeLine(DocumentLine line)
-        {
-            string text = CurrentContext.Document.GetText(line);
-            var theme = ThemeManager.Current.ActualApplicationTheme;
-
-            ApplyColorRule(line, text, @"//.*", "Comment");
-            ApplyColorRule(line, text, @"--", "Separator");
-            ApplyColorRule(line, text, @"\b\d+(\.\d+)?\b", "Number");
-            ApplyColorRule(line, text, @"""(?:\\.|[^""\\])*""", "String");
-            ApplyColorRule(line, text, @"\b(true|false)\b", "Boolean");
-            ApplyColorRule(line, text, $@"\b({string.Join("|", _functions)})\b", "Function");
-            ApplyColorRule(line, text, $@"\b({string.Join("|", _models)})\b", "Model");
-            if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
-            {
-                ApplyColorRule(line, text, $@"\b({string.Join("|", currentModelCells)})\b", "Cell");
-            }
-            ApplyColorRule(line, text, $@"\b({string.Join("|", _contextVariables)})\b", "ContextVariable");
-        }
-
-        private void ApplyColorRule(DocumentLine line, string text, string pattern, string colorKey)
-        {
-            var regex = new Regex(pattern);
-            var brush = GetThemeColor(colorKey);
-
-            foreach (Match match in regex.Matches(text))
-            {
-                ChangeLinePart(
-                    line.Offset + match.Index,
-                    line.Offset + match.Index + match.Length,
-                    element => element.TextRunProperties.SetForegroundBrush(brush)
-                );
-            }
-        }
-
-        private SolidColorBrush GetThemeColor(string colorKey)
-        {
-            var theme = ThemeManager.Current.ActualApplicationTheme;
-            var (dark, light, highContrast) = ColorSchemes[colorKey];
-
-            return theme switch
-            {
-                ApplicationTheme.Dark => new SolidColorBrush(dark),
-                ApplicationTheme.Light => new SolidColorBrush(light),
-                _ => new SolidColorBrush(highContrast)
-            };
-        }
-
+        //Show AutoCompletion Window
         private async void TextArea_TextEntered(object sender, TextCompositionEventArgs e)
         {
             await Task.Delay(200);
@@ -172,7 +100,6 @@ namespace ActuLight
                 return;
             }
 
-
             // Check if we're inside Assum function
             var textBeforeCaret = textArea.Document.GetText(0, textArea.Caret.Offset);
             var assumMatch = Regex.Match(textBeforeCaret, @"Assum\([""']([^""']*)$");
@@ -186,13 +113,16 @@ namespace ActuLight
             else
             {
                 // Check if we're after a model name and a dot
-                var modelMatch = Regex.Match(textBeforeCaret, @"(\w+)\.\s*$");
+                var modelMatch = Regex.Match(textBeforeCaret, @"(\w+)({[^}]*})?\.([\w]*)$");
                 if (modelMatch.Success)
                 {
                     string modelName = modelMatch.Groups[1].Value;
+                    string parameters = modelMatch.Groups[2].Value; // This will be empty if no parameters
+                    string cellPrefix = modelMatch.Groups[3].Value;
                     if (_modelCells.TryGetValue(modelName, out var cells))
                     {
                         completionData.AddRange(cells
+                            .Where(cell => cell.StartsWith(cellPrefix, StringComparison.OrdinalIgnoreCase))
                             .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
                     }
                 }
@@ -205,7 +135,6 @@ namespace ActuLight
                             .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
                             .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
                     }
-
 
                     // Add function completions
                     completionData.AddRange(_functions
@@ -285,12 +214,176 @@ namespace ActuLight
             return match.Success ? match.Value : string.Empty;
         }
 
+        //Colorize
+        protected override void ColorizeLine(DocumentLine line)
+        {
+            string text = CurrentContext.Document.GetText(line);
+            var theme = ThemeManager.Current.ActualApplicationTheme;
+
+            ApplyColorRule(line, text, @"//.*", "Comment");
+            ApplyColorRule(line, text, @"--", "Separator");
+            ApplyColorRule(line, text, @"\b\d+(\.\d+)?\b", "Number");
+            ApplyColorRule(line, text, @"""(?:\\.|[^""\\])*""", "String");
+            ApplyColorRule(line, text, @"\b(true|false)\b", "Boolean");
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _functions)})\b", "Function");
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _models)})\b", "Model");
+            ApplyColorRule(line, text, $@"\b({string.Join("|", _contextVariables)})\b", "ContextVariable");
+
+            ApplyCurrentModelCellColorRule(line, text);
+            ApplyOtherModelCellColorRule(line, text);
+            ApplyCellReferenceValidation(line, text);
+
+        }
+
+        private void ApplyColorRule(DocumentLine line, string text, string pattern, string colorKey)
+        {
+            var regex = new Regex(pattern);
+            var brush = GetThemeColor(colorKey);
+
+            foreach (Match match in regex.Matches(text))
+            {
+                ChangeLinePart(
+                    line.Offset + match.Index,
+                    line.Offset + match.Index + match.Length,
+                    element => element.TextRunProperties.SetForegroundBrush(brush)
+                );
+            }
+        }
+
+        private void ApplyCurrentModelCellColorRule(DocumentLine line, string text)
+        {
+            if (string.IsNullOrEmpty(_currentModel) || !_modelCells.TryGetValue(_currentModel, out var currentModelCells))
+                return;
+
+            var cellBrush = GetThemeColor("Cell");
+            string pattern = $@"\b({string.Join("|", currentModelCells.Select(Regex.Escape))})\b";
+            var regex = new Regex(pattern);
+
+            foreach (Match match in regex.Matches(text))
+            {
+                int startOffset = line.Offset + match.Index;
+                int endOffset = startOffset + match.Length;
+                ChangeLinePart(startOffset, endOffset, element => element.TextRunProperties.SetForegroundBrush(cellBrush));
+            }
+        }
+
+        private void ApplyOtherModelCellColorRule(DocumentLine line, string text)
+        {
+            var cellBrush = GetThemeColor("Cell");
+
+            foreach (var modelEntry in _modelCells.Where(entry => entry.Key != _currentModel))
+            {
+                string modelName = modelEntry.Key;
+                HashSet<string> cells = modelEntry.Value;
+
+                string pattern = $@"\b{Regex.Escape(modelName)}\.({string.Join("|", cells.Select(Regex.Escape))})\b";
+                var regex = new Regex(pattern);
+
+                foreach (Match match in regex.Matches(text))
+                {
+                    int startOffset = line.Offset + match.Index + modelName.Length + 1; // +1 for the dot
+                    int endOffset = startOffset + match.Groups[1].Length;
+                    ChangeLinePart(startOffset, endOffset, element => element.TextRunProperties.SetForegroundBrush(cellBrush));
+                }
+            }
+        }
+
+        private void ApplyCellReferenceValidation(DocumentLine line, string text)
+        {
+            var errorBrush = new SolidColorBrush(Colors.Red);
+            errorBrush.Freeze();
+            var cellBrush = GetThemeColor("Cell");
+            var modelBrush = GetThemeColor("Model");
+
+            // 모든 셀 참조 패턴 (현재 모델 및 다른 모델, 파라미터 포함)
+            string pattern = @"(\w+)({[^}]+})?\.?(\w+)?\[";
+            var regex = new Regex(pattern);
+
+            foreach (Match match in regex.Matches(text))
+            {
+                string modelName = match.Groups[1].Value;
+                string parameters = match.Groups[2].Value;
+                string cellName = match.Groups[3].Value;
+
+                int modelStartIndex = match.Index;
+                int modelLength = modelName.Length + parameters.Length;
+
+                if (string.IsNullOrEmpty(cellName)) // 현재 모델의 셀 참조
+                {
+                    cellName = modelName;
+                    if (_currentModel != null && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
+                    {
+                        if (currentModelCells.Contains(cellName))
+                        {
+                            ApplyBrush(line, modelStartIndex, modelLength, cellBrush);
+                        }
+                        else
+                        {
+                            ApplyErrorStyle(line, modelStartIndex, modelLength, errorBrush);
+                        }
+                    }
+                }
+                else // 다른 모델의 셀 참조
+                {
+                    if (_models.Contains(modelName))
+                    {
+                        ApplyBrush(line, modelStartIndex, modelLength, modelBrush);
+
+                        int cellStartIndex = modelStartIndex + modelLength + 1; // +1 for the dot
+                        if (_modelCells.TryGetValue(modelName, out var modelCells) && modelCells.Contains(cellName))
+                        {
+                            ApplyBrush(line, cellStartIndex, cellName.Length, cellBrush);
+                        }
+                        else
+                        {
+                            ApplyErrorStyle(line, cellStartIndex, cellName.Length, errorBrush);
+                        }
+                    }
+                    else
+                    {
+                        ApplyErrorStyle(line, modelStartIndex, modelLength + 1 + cellName.Length, errorBrush);
+                    }
+                }
+            }
+        }
+
+        private void ApplyBrush(DocumentLine line, int startIndex, int length, SolidColorBrush brush)
+        {
+            int startOffset = line.Offset + startIndex;
+            int endOffset = startOffset + length;
+            ChangeLinePart(startOffset, endOffset, element => element.TextRunProperties.SetForegroundBrush(brush));
+        }
+
+        private void ApplyErrorStyle(DocumentLine line, int startIndex, int length, SolidColorBrush brush)
+        {
+            int startOffset = line.Offset + startIndex;
+            int endOffset = startOffset + length;
+            ChangeLinePart(startOffset, endOffset, element =>
+            {
+                element.TextRunProperties.SetTextDecorations(TextDecorations.Underline);
+                element.TextRunProperties.SetForegroundBrush(brush);
+            });
+        }
+
+        private SolidColorBrush GetThemeColor(string colorKey)
+        {
+            var theme = ThemeManager.Current.ActualApplicationTheme;
+            var (dark, light, highContrast) = ColorSchemes[colorKey];
+
+            return theme switch
+            {
+                ApplicationTheme.Dark => new SolidColorBrush(dark),
+                ApplicationTheme.Light => new SolidColorBrush(light),
+                _ => new SolidColorBrush(highContrast)
+            };
+        }
+
+        //AutoCompletion Update
         public void UpdateModels(string modelName, IEnumerable<string> models)
         {
             _currentModel = modelName;
             _models = new HashSet<string>(models);
             _textEditor.TextArea.TextView.Redraw();
-
         }
 
         public void UpdateModelCells(string modelName, string cellName, IEnumerable<string> cells)
@@ -318,6 +411,28 @@ namespace ActuLight
             _textEditor.TextArea.TextView.Redraw();
         }
 
+        //Setting
+        private void SetTextEditorStyle()
+        {
+            _textEditor.FontFamily = new FontFamily("Consolas");
+            _textEditor.FontSize = 12;
+            _textEditor.ShowLineNumbers = true;
+            _textEditor.Options.EnableHyperlinks = true;
+            _textEditor.Options.EnableEmailHyperlinks = true;
+
+            // 배경색과 전경색을 테마에 따라 동적으로 설정
+            _textEditor.SetResourceReference(TextEditor.BackgroundProperty, "SystemControlBackgroundAltHighBrush");
+            _textEditor.SetResourceReference(TextEditor.ForegroundProperty, "SystemControlForegroundBaseHighBrush");
+
+            // 선택 영역 스타일 설정
+            _textEditor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(60, 51, 153, 255));
+            _textEditor.TextArea.SelectionForeground = null;  // 선택된 텍스트의 전경색은 변경하지 않음
+
+            // 현재 줄 강조 설정
+            _textEditor.TextArea.TextView.CurrentLineBackground = new SolidColorBrush(Color.FromArgb(40, 0, 0, 0));
+            _textEditor.TextArea.TextView.CurrentLineBorder = new Pen(new SolidColorBrush(Color.FromArgb(40, 0, 0, 0)), 2);
+        }
+
         private void LoadAutoCompletionSet()
         {
             string jsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AutoCompletion.json");
@@ -328,7 +443,11 @@ namespace ActuLight
                 _functions = autoCompletionSet.Functions;
                 _cellCompletions = autoCompletionSet.CellCompletions;
             }
+        }
 
+        private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
+        {
+            _textEditor.TextArea.TextView.Redraw();
         }
     }
 
@@ -405,25 +524,46 @@ namespace ActuLight
         {
             string insertText;
 
+            // Get the text from the start of the line to the completion segment
+            var lineStart = textArea.Document.GetLineByOffset(completionSegment.Offset).Offset;
+            var textBeforeSegment = textArea.Document.GetText(completionSegment.Offset, completionSegment.Length);
+
             if (CompletionType == CompletionType.Cell)
             {
-                // Get the text from the start of the line to the completion segment
-                var textBeforeSegment = textArea.Document.GetText(completionSegment.Offset, completionSegment.Length);
-                var modelMatch = Regex.Match(textBeforeSegment, @"(\w+)\.\s*$");
-
+                // Check for model name and parameters
+                var modelMatch = Regex.Match(textBeforeSegment, @"(\w+({[^}]*})?\.[\w.]*)$");
                 if (modelMatch.Success)
                 {
-                    string modelName = modelMatch.Groups[1].Value;
-                    insertText = $"{modelName}.{Text}[t]";
+                    string modelPrefix = modelMatch.Groups[1].Value;
+                    // Remove the last dot if it exists
+                    if (modelPrefix.EndsWith("."))
+                    {
+                        modelPrefix = modelPrefix.Substring(0, modelPrefix.Length - 1);
+                    }
+                    insertText = $"{modelPrefix}.{Text}[t]";
                 }
                 else
                 {
-                    insertText = $"{Text}[t]";
+                    if (textBeforeSegment.Contains("."))
+                    {
+                        insertText = $".{Text}[t]";
+                    }
+                    else
+                    {
+                        insertText = $"{Text}[t]";
+                    }                 
                 }
             }
             else if (CompletionType == CompletionType.Function)
             {
-                insertText = Text == "Assum" ? $"{Text}(\"\")" : $"{Text}()";
+                if (Text == "Assum")
+                {
+                    insertText = $"{Text}(\"\")[t]";
+                }
+                else
+                {
+                    insertText = $"{Text}()";
+                }
             }
             else if (CompletionType == CompletionType.Model)
             {
@@ -463,7 +603,7 @@ namespace ActuLight
             {
                 if (Text == "Assum")
                 {
-                    textArea.Caret.Offset -= 2;
+                    textArea.Caret.Offset -= 5;
                 }
                 else
                 {
@@ -472,4 +612,5 @@ namespace ActuLight
             }
         }
     }
+
 }

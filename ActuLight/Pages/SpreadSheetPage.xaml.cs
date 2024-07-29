@@ -132,6 +132,7 @@ namespace ActuLight.Pages
                 cellMatches = newCellMatches;
                 UpdateModelCells(model, cellMatches);
                 UpdateCellList(selectedModel);
+                UpdateSyntaxHighlighter();
             }
 
             // Update invokeMatches
@@ -283,7 +284,6 @@ namespace ActuLight.Pages
                     cellItems.Add(textBlock);
                 }
                 CellsList.ItemsSource = cellItems;
-                SyntaxHighlighter.UpdateModelCells(selectedModel, selectedCell, model.CompiledCells.Keys);
             }
             else
             {
@@ -337,12 +337,6 @@ namespace ActuLight.Pages
 
         private void UpdateInvokes(Model model)
         {
-            // Clear all model sheets
-            foreach (var m in Models.Values)
-            {
-                m.Sheets.Clear();
-            }
-
             try
             {
                 // Process each Invoke call
@@ -371,8 +365,16 @@ namespace ActuLight.Pages
                 // CellStatusTextBlock 업데이트
                 CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
             }
+            finally
+            {
+                UpdateSheets();
 
-            UpdateSheets();
+                // Clear all model sheets
+                foreach (var m in Models.Values)
+                {
+                    m.Clear();
+                }
+            }            
         }
 
         private void UpdateSheets()

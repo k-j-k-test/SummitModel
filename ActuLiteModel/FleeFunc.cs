@@ -9,37 +9,41 @@ namespace ActuLiteModel
 {
     public static class FleeFunc
     {
-        public const int Max_T = 2000;
-
         public static Dictionary<string, Model> ModelDict = new Dictionary<string, Model>();
 
         public static Dictionary<string, Model> SubModelDict = new Dictionary<string, Model>();
 
-        public static double Eval(string modelName, string var, int t)
+        public static double Eval(string modelName, string var, double t)
         {
-            return GetCellValue(modelName, var, Math.Min(t, Max_T));
+            return GetCellValue(modelName, var, Math.Min(ToInt(t), Sheet.MaxT));
         }
 
-        public static double Eval(string modelName, string var, int t, params object[] kvpairs)
+        public static double Eval(string modelName, string var, double t, params object[] kvpairs)
         {
-            return GetCellValue(modelName, var, Math.Min(t, Max_T), kvpairs);
+            return GetCellValue(modelName, var, Math.Min(ToInt(t), Sheet.MaxT), kvpairs);
         }
 
-        public static double Assum(string modelName, int t, params object[] assumptionKeys)
+        public static double Assum(string modelName, double t, params object[] assumptionKeys)
         {
-           return GetAssumptionValue(modelName, Math.Min(t, Max_T), assumptionKeys.Select(x => x.ToString()).ToArray());
+           return GetAssumptionValue(modelName, Math.Min(ToInt(t), Sheet.MaxT), assumptionKeys.Select(x => x.ToString()).ToArray());
         }
 
-        public static double Sum(string modelName, string var, int start, int end)
+        public static double Sum(string modelName, string var, double start, double end)
         {
+            int _start = ToInt(start);
+            int _end = ToInt(end);
+
             if (start > end) return 0;
-            return Enumerable.Range(start, Math.Min(end - start + 1, Max_T + 1)).Sum(t => GetCellValue(modelName, var, t));
+            return Enumerable.Range(_start, Math.Min(_end - _start + 1, Sheet.MaxT + 1)).Sum(t => GetCellValue(modelName, var, t));
         }
 
-        public static double Prd(string modelName, string var, int start, int end)
+        public static double Prd(string modelName, string var, double start, double end)
         {
+            int _start = ToInt(start);
+            int _end = ToInt(end);
+
             if (start > end) return 0;
-            return Enumerable.Range(start, Math.Min(end - start + 1, Max_T + 1)).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
+            return Enumerable.Range(_start, Math.Min(_end - _start + 1, Sheet.MaxT + 1)).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
         }
 
         public static double Max(params object[] vals)
@@ -253,6 +257,13 @@ namespace ActuLiteModel
             // 기준일 (예: 1900년 1월 1일)로부터의 경과 일수를 날짜로 변환
             DateTime baseDate = new DateTime(1900, 1, 1);
             return baseDate.AddDays(doubleRepresentation);
+        }
+
+        private static int ToInt(double value)
+        {
+            double epsilon = 0.0000001;
+
+            return (int)Math.Floor(value + epsilon);
         }
     }
 }

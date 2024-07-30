@@ -26,7 +26,8 @@ namespace ActuLight.Pages
         private DispatcherTimer fileCheckTimer;
         private bool isAutoSync = false;
 
-        public Dictionary<string, (List<object> Headers, List<List<object>> Data)> excelData;
+        public static string SelectedFilePath { get; private set; }
+        public Dictionary<string, List<List<object>>> excelData;
 
         public FilePage()
         {
@@ -82,7 +83,55 @@ namespace ActuLight.Pages
         {
             if (RecentFilesList.SelectedItem is RecentFile selectedFile)
             {
-                await LoadExcelFileAsync(selectedFile.Path);
+                try
+                {
+                    LoadingOverlay.Visibility = Visibility.Visible;
+
+                    // FilePage의 LoadExcelFileAsync 메서드 호출
+                    await LoadExcelFileAsync(selectedFile.Path);
+
+                    // MainWindow 인스턴스 가져오기
+                    var mainWindow = Application.Current.MainWindow as MainWindow;
+                    if (mainWindow == null)
+                    {
+                        throw new InvalidOperationException("MainWindow를 찾을 수 없습니다.");
+                    }
+
+                    // ModelPointPage의 LoadDataAsync 메서드 호출
+                    //ModelPointPage modelPointPage = null;
+                    if (mainWindow.pageCache.TryGetValue("Pages/ModelPointPage.xaml", out Page modelPointPage))
+                    {
+                        await (modelPointPage as ModelPointPage).LoadDataAsync();
+                    }
+                    else
+                    {
+                        mainWindow.pageCache["Pages/ModelPointPage.xaml"] = new ModelPointPage();
+                        await (mainWindow.pageCache["Pages/ModelPointPage.xaml"] as ModelPointPage).LoadDataAsync();
+                    }
+                    
+
+                    // AssumptionPage의 LoadDataAsync 메서드 호출
+                    //AssumptionPage assumptionPage = null;
+                    if (mainWindow.pageCache.TryGetValue("Pages/AssumptionPage.xaml", out Page assumptionPage))
+                    {
+                        (assumptionPage as AssumptionPage).LoadDataAsync();
+                    }
+                    else
+                    {
+                        mainWindow.pageCache["Pages/AssumptionPage.xaml"] = new AssumptionPage();
+                        (mainWindow.pageCache["Pages/AssumptionPage.xaml"] as AssumptionPage).LoadDataAsync();
+                    }
+
+                    MessageBox.Show("모든 데이터가 성공적으로 로드되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"데이터 로드 중 오류가 발생했습니다: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                finally
+                {
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                }
             }
         }
 
@@ -96,13 +145,15 @@ namespace ActuLight.Pages
 
                 await Task.Run(() =>
                 {
-                    excelData = ExcelHelper.ReadExcelFile(filePath);
+                    excelData = ExcelImporter.ImportMultipleSheets(filePath);
                 });
 
                 currentFilePath = filePath;
                 currentFileLastWriteTime = File.GetLastWriteTime(filePath);
 
                 UpdateStatusMessage($"엑셀 파일이 성공적으로 연결되었습니다. 파일 경로: {filePath}", true);
+                SelectedFilePath = filePath;
+
                 UpdateExcelSummary();
 
                 AddToRecentFiles(filePath);
@@ -225,8 +276,8 @@ namespace ActuLight.Pages
 
                 foreach (var sheet in excelData)
                 {
-                    int rowCount = sheet.Value.Data.Count;
-                    int columnCount = sheet.Value.Headers.Count;
+                    int rowCount = sheet.Value.Count;
+                    int columnCount = sheet.Value[0].Count;
 
                     summaryBuilder.AppendLine($"{sheet.Key}: {rowCount}행, {columnCount}열");
 

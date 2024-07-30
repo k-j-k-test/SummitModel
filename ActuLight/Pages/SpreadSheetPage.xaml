@@ -1,8 +1,9 @@
-﻿<Page x:Class="ActuLight.Pages.SpreadSheetPage"
+﻿<Page x:Class="ActuLight.Pages.SpreadSheetPage" 
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
-      Title="SpreadSheetPage">
+      xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"    
+      Title="SpreadSheetPage" >
+
 
     <Grid>
         <Grid.RowDefinitions>
@@ -15,6 +16,7 @@
         <!-- 상단 버튼 패널 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
             <Button Content="데이터 가져오기" Click="LoadData_Click" Margin="0,0,5,0"/>
+            <Button Content="엑셀로 보기" Click="ViewInExcel_Click" Margin="0,0,5,0"/>
         </StackPanel>
 
         <!-- 상단 패널 -->

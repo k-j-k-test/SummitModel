@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Drawing;
+using System.Diagnostics;
 
 namespace ActuLiteModel
 {
@@ -288,7 +289,58 @@ namespace ActuLiteModel
                 package.SaveAs(new FileInfo(fileName));
                 Console.WriteLine($"Excel 파일 저장됨: {fileName}");
             }
-        } 
+        }
+
+        public static void RunLatestExcelFile(string baseFilePath)
+        {
+            // Get the directory and base file name without extension
+            string directory = Path.GetDirectoryName(baseFilePath);
+            string fileName = Path.GetFileNameWithoutExtension(baseFilePath);
+
+            // Find all versioned Excel files matching the base file name pattern
+            var files = Directory.GetFiles(directory, $"{fileName}_v*.xlsx")
+                                 .OrderByDescending(f => {
+                                     int startIndex = f.LastIndexOf("_v") + 2;
+                                     int endIndex = f.LastIndexOf(".xlsx");
+
+                                     if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex)
+                                         return 0;
+
+                                     string versionStr = f.Substring(startIndex, endIndex - startIndex);
+                                     if (int.TryParse(versionStr, out int versionNumber))
+                                     {
+                                         return versionNumber;
+                                     }
+                                     else
+                                     {
+                                         return 0;
+                                     }
+                                 })
+                                 .ToList();
+
+            if (files.Count == 0)
+            {
+                throw new FileNotFoundException($"No versioned Excel file found for '{baseFilePath}'.");
+            }
+
+            // Get the latest versioned file (first in sorted list)
+            string latestFilePath = files.First();
+
+            // Start Excel process to open the file
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = latestFilePath,
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException($"Error opening Excel file '{latestFilePath}': {ex.Message}", ex);
+            }
+        }
 
         private void WriteHeaderInfo(ExcelWorksheet worksheet, Model model, string headerLine)
         {

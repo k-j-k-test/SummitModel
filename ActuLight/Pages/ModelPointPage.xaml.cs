@@ -17,6 +17,7 @@ namespace ActuLight.Pages
         private DataExpander dataExpander;
         private List<List<object>> originalData;
         private List<string> headers;
+        private List<string> types;
         public List<object> SelectedData { get; private set; }
         private Window expandedDataWindow;
         private bool isSearching = false;
@@ -31,7 +32,7 @@ namespace ActuLight.Pages
             await LoadDataAsync();
         }
 
-        private async Task LoadDataAsync()
+        public async Task LoadDataAsync()
         {
             LoadingOverlay.Visibility = Visibility.Visible;
 
@@ -43,18 +44,31 @@ namespace ActuLight.Pages
                 if (filePage != null && filePage.excelData != null && filePage.excelData.ContainsKey("mp"))
                 {
                     var mpData = filePage.excelData["mp"];
-                    var typeNames = mpData.Headers;
-                    var keys = mpData.Data[0];
+                    types = mpData[0].Select(t => t.ToString()).ToList();
+                    headers = mpData[1].Select(h => h.ToString()).ToList();
+                    originalData = mpData.Skip(2).ToList();
 
-                    dataExpander = new DataExpander(typeNames, keys);
-                    originalData = mpData.Data.Skip(1).ToList();
-                    headers = dataExpander.GetKeys().ToList();
+                    dataExpander = new DataExpander(types, headers);
 
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         UpdateDataGrid(MainDataGrid, headers, originalData);
                         AutoFitColumns();
                     });
+
+                    // 첫 번째 데이터의 확장된 데이터 가져오기
+                    if (originalData.Any())
+                    {
+                        var firstExpandedData = dataExpander.ExpandData(originalData[0]).FirstOrDefault();
+                        if (firstExpandedData != null)
+                        {
+                            SelectedData = firstExpandedData;
+                            UpdateSelectedDataDisplay();
+
+                            // ModelEngine의 SetModelPoint 실행
+                            App.ModelEngine.SetModelPoint(headers, SelectedData);
+                        }
+                    }
                 }
                 else
                 {

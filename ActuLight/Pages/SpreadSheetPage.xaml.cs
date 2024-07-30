@@ -8,6 +8,11 @@ using ActuLiteModel;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using ICSharpCode.AvalonEdit;
+using System.Windows.Input;
+using System.Windows.Data;
+using static ActuLight.Pages.SettingsPage;
+using System.Text.Json;
+using System.IO;
 
 namespace ActuLight.Pages
 {
@@ -17,6 +22,7 @@ namespace ActuLight.Pages
 
         public Dictionary<string, Model> Models = App.ModelEngine.Models;
         public Dictionary<string, string> Scripts { get; set; } = new Dictionary<string, string>();
+        public int SignificantDigits;
 
         private string selectedModel;
         private string selectedCell;
@@ -30,6 +36,10 @@ namespace ActuLight.Pages
             SyntaxHighlighter = new SyntaxHighlighter(ScriptEditor);
             ScriptEditor.TextArea.TextView.LineTransformers.Add(SyntaxHighlighter);
             UpdateSyntaxHighlighter();
+            LoadSignificantDigitsSetting();
+
+            // Ctrl+S 키 이벤트 처리를 위한 핸들러 추가
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
@@ -42,7 +52,11 @@ namespace ActuLight.Pages
                 var filePage = ((MainWindow)Application.Current.MainWindow).pageCache["Pages/FilePage.xaml"] as FilePage;
                 if (filePage?.excelData?.ContainsKey("cell") == true)
                 {
-                    var cells = ExcelHelper.ConvertToClassList<Input_cell>(filePage.excelData["cell"].Data);
+                    var cellData = filePage.excelData["cell"];
+                    var headers = cellData[0].Select(h => h.ToString()).ToList();
+                    var data = cellData.Skip(1).ToList();
+
+                    var cells = ExcelImporter.ConvertToClassList<Input_cell>(data);
 
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
@@ -73,6 +87,19 @@ namespace ActuLight.Pages
             {
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private void LoadSignificantDigitsSetting()
+        {
+            AppSettings settings = null;
+
+            if (File.Exists("settings.json"))
+            {
+                string json = File.ReadAllText("settings.json");
+                settings = JsonSerializer.Deserialize<AppSettings>(json);
+            }
+            
+            SignificantDigits = settings?.SignificantDigits ?? 8;
         }
 
         private void ModelsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -194,11 +221,20 @@ namespace ActuLight.Pages
 
                     foreach (var header in headers)
                     {
-                        dataGrid.Columns.Add(new DataGridTextColumn
+                        var column = new DataGridTextColumn
                         {
                             Header = header,
-                            Binding = new System.Windows.Data.Binding($"[{header}]")
-                        });
+                        };
+
+                        var binding = new Binding($"[{header}]");
+
+                        if (header != "t" && double.TryParse(rows[1].Split('\t')[Array.IndexOf(headers, header)], out _))
+                        {
+                            binding.Converter = new SignificantDigitsConverter(SignificantDigits);
+                        }
+
+                        column.Binding = binding;
+                        dataGrid.Columns.Add(column);
                     }
 
                     var data = new List<Dictionary<string, string>>();
@@ -339,6 +375,12 @@ namespace ActuLight.Pages
         {
             try
             {
+                // Clear all model sheets
+                foreach (var m in Models.Values)
+                {
+                    m.Clear();
+                }
+
                 // Process each Invoke call
                 foreach (Match match in invokeMatches)
                 {
@@ -369,11 +411,7 @@ namespace ActuLight.Pages
             {
                 UpdateSheets();
 
-                // Clear all model sheets
-                foreach (var m in Models.Values)
-                {
-                    m.Clear();
-                }
+
             }            
         }
 
@@ -434,5 +472,110 @@ namespace ActuLight.Pages
             SyntaxHighlighter.UpdateAssumptions(App.ModelEngine.Assumptions.Keys);
         }
 
+        private void ScriptEditor_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
+                var newCellMatches = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)").Matches(ScriptEditor.Text);
+                UpdateModelCells(Models[selectedModel], newCellMatches);
+
+                // MainWindow의 SaveExcelFile 메서드 호출
+                var mainWindow = Application.Current.MainWindow as MainWindow;
+                mainWindow?.SaveExcelFile();
+            }
+        }
+
+        private void ViewInExcel_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string selectedFilePath = FilePage.SelectedFilePath;
+                if (string.IsNullOrEmpty(selectedFilePath))
+                {
+                    MessageBox.Show("먼저 FilePage에서 파일을 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                string directory = Path.GetDirectoryName(selectedFilePath);
+                string fileName = Path.GetFileNameWithoutExtension(selectedFilePath);
+                string samplesDirectory = Path.Combine(directory, "Samples");
+
+                if (!Directory.Exists(samplesDirectory))
+                {
+                    Directory.CreateDirectory(samplesDirectory);
+                }
+
+                string filePath = Path.Combine(samplesDirectory, $"Sample.xlsx");
+
+                App.ModelEngine.SaveToExcel(filePath);
+                ModelEngine.RunLatestExcelFile(filePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Excel 파일 생성 또는 열기 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+    }
+
+    public class SignificantDigitsConverter : IValueConverter
+    {
+        private readonly int _significantDigits;
+
+        public SignificantDigitsConverter(int significantDigits)
+        {
+            _significantDigits = significantDigits;
+        }
+
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            if (value is string stringValue && double.TryParse(stringValue, out double doubleValue))
+            {
+                return FormatToSignificantDigits(doubleValue, _significantDigits);
+            }
+            return value;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+
+        private string FormatToSignificantDigits(double value, int significantDigits)
+        {
+            if (value == 0)
+                return "0";
+
+            // 값의 절대값을 취하고 지수 표기법으로 변환
+            string scientificNotation = Math.Abs(value).ToString($"E{significantDigits - 1}");
+            string[] parts = scientificNotation.Split('E');
+            double coefficient = double.Parse(parts[0]);
+            int exponent = int.Parse(parts[1]);
+
+            // 정수 부분의 자릿수 계산
+            int integerPartDigits = Math.Max(1, exponent + 1);
+
+            if (integerPartDigits >= significantDigits)
+            {
+                // 정수 부분이 유효숫자 이상인 경우, 정수 부분만 표시
+                return Math.Round(value, 0).ToString("F0");
+            }
+            else
+            {
+                // 소수점 이하 자릿수 계산
+                int decimalPlaces = Math.Max(0, significantDigits - integerPartDigits);
+
+                // 반올림 후 문자열로 변환
+                string roundedValue = Math.Round(value, decimalPlaces).ToString($"F{decimalPlaces}");
+
+                // 끝의 불필요한 0 제거
+                roundedValue = roundedValue.TrimEnd('0');
+                if (roundedValue.EndsWith("."))
+                    roundedValue = roundedValue.TrimEnd('.');
+
+                return roundedValue;
+            }
+        }
     }
 }

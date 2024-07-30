@@ -29,7 +29,7 @@ namespace ActuLight.Pages
             await LoadDataAsync();
         }
 
-        private async Task LoadDataAsync()
+        public async Task LoadDataAsync()
         {
             LoadingOverlay.Visibility = Visibility.Visible;
 
@@ -41,7 +41,11 @@ namespace ActuLight.Pages
                 if (filePage != null && filePage.excelData != null && filePage.excelData.ContainsKey("assum"))
                 {
                     var assumData = filePage.excelData["assum"];
-                    var assumList = ExcelHelper.ConvertToClassList<Input_assum>(assumData.Data);
+
+                    var headers = assumData[0];
+                    var data = assumData.Skip(1).ToList();
+
+                    var assumList = ExcelImporter.ConvertToClassList<Input_assum>(data);
 
                     App.ModelEngine.SetAssumption(assumList);
 

@@ -1,9 +1,9 @@
 ﻿using ActuLiteModel;
-using System.Text.Json;
+using Newtonsoft.Json;
 using System.Windows;
 using System.IO;
-using System.Text.Json;
 using ModernWpf;
+using System;
 
 namespace ActuLight
 {
@@ -29,7 +29,6 @@ namespace ActuLight
     {
         private const string SettingsFileName = "appSettings.json";
         private static string SettingsFilePath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, SettingsFileName);
-
         public string CurrentTheme { get; set; } = "DarkGreyTheme"; // 기본 테마
 
         public static AppSettingsManager Load()
@@ -37,14 +36,14 @@ namespace ActuLight
             if (File.Exists(SettingsFilePath))
             {
                 string json = File.ReadAllText(SettingsFilePath);
-                return JsonSerializer.Deserialize<AppSettingsManager>(json) ?? new AppSettingsManager();
+                return JsonConvert.DeserializeObject<AppSettingsManager>(json) ?? new AppSettingsManager();
             }
             return new AppSettingsManager();
         }
 
         public void Save()
         {
-            string json = JsonSerializer.Serialize(this);
+            string json = JsonConvert.SerializeObject(this, Formatting.Indented);
             File.WriteAllText(SettingsFilePath, json);
         }
     }

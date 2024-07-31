@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Flee.PublicTypes;
 
 namespace ActuLiteModel
 {
@@ -10,6 +9,8 @@ namespace ActuLiteModel
     {
         private readonly Type[] types;
         private readonly string[] keys;
+        private readonly ExpressionContext context;
+        private readonly Dictionary<string, IGenericExpression<object>> compiledExpressions;
 
         public DataExpander(IEnumerable<object> typeNames, IEnumerable<object> keys)
         {
@@ -24,6 +25,19 @@ namespace ActuLiteModel
 
             this.types = ConvertToTypes(typeNameArray);
             this.keys = keyArray;
+
+            context = new ExpressionContext();
+            context.Imports.AddType(typeof(FleeFunc));
+            compiledExpressions = new Dictionary<string, IGenericExpression<object>>();
+            InitializeContextVariables();
+        }
+
+        private void InitializeContextVariables()
+        {
+            for (int i = 0; i < keys.Length; i++)
+            {
+                context.Variables[keys[i]] = GetDefaultValue(types[i]);
+            }
         }
 
         private Type[] ConvertToTypes(string[] typeNames)
@@ -69,18 +83,18 @@ namespace ActuLiteModel
 
         private List<string[]> ExpandRow(string[] row)
         {
-            var expandedValues = row.Select((value, index) => ExpandValue(value, types[index])).ToArray();
+            var expandedValues = row.Select((value, index) => ExpandValue(value, types[index], keys[index])).ToArray();
             return CartesianProduct(expandedValues);
         }
 
-        private static List<string> ExpandValue(string value, Type type)
+        private List<string> ExpandValue(string value, Type type, string key)
         {
             if (string.IsNullOrEmpty(value))
             {
                 return new List<string> { GetDefaultValueAsString(type) };
             }
 
-            var result = new HashSet<string>();
+            var result = new List<string>();
             var parts = value.Split(',');
 
             foreach (var part in parts.Select(p => p.Trim()))
@@ -100,13 +114,85 @@ namespace ActuLiteModel
                         result.Add(part);
                     }
                 }
+                else if (IsExpression(part) && type != typeof(DateTime))
+                {
+                    compiledExpressions[key] = context.CompileGeneric<object>(part);
+                    result.Add(part);  // Store the original expression
+                }
                 else
                 {
                     result.Add(part);
                 }
             }
 
-            return result.Count > 0 ? result.ToList() : new List<string> { GetDefaultValueAsString(type) };
+            return result.Count > 0 ? result : new List<string> { GetDefaultValueAsString(type) };
+        }
+
+        private List<string[]> CartesianProduct(List<string>[] sequences)
+        {
+            var result = new List<string[]>();
+
+            void GenerateCartesianProduct(int depth, string[] current)
+            {
+                if (depth == sequences.Length)
+                {
+                    result.Add((string[])current.Clone());
+                    return;
+                }
+
+                foreach (var item in sequences[depth])
+                {
+                    current[depth] = item;
+
+                    // Update the context with the current value
+                    context.Variables[keys[depth]] = ConvertValue(item, types[depth]);
+
+                    // Re-evaluate all compiled expressions
+                    for (int i = 0; i < depth; i++)
+                    {
+                        if (compiledExpressions.TryGetValue(keys[i], out var expression))
+                        {
+                            current[i] = expression.Evaluate().ToString();
+                        }
+                    }
+
+                    GenerateCartesianProduct(depth + 1, current);
+                }
+            }
+
+            GenerateCartesianProduct(0, new string[sequences.Length]);
+            return result;
+        }
+
+        private static bool IsExpression(string value)
+        {
+            return value != null && (value.Contains("+") || value.Contains("-") || value.Contains("*") || value.Contains("/") ||
+                   value.Contains("Min(") || value.Contains("Max(") || value.Contains("If("));
+        }
+
+        private object ConvertValue(string value, Type type)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return GetDefaultValue(type);
+            }
+
+            if (compiledExpressions.TryGetValue(value, out var expression))
+            {
+                var result = expression.Evaluate();
+                return Convert.ChangeType(result, type);
+            }
+
+            if (type == typeof(int))
+                return int.TryParse(value, out int intResult) ? intResult : 0;
+            if (type == typeof(double))
+                return double.TryParse(value, out double doubleResult) ? doubleResult : 0.0;
+            if (type == typeof(DateTime))
+                return DateTime.TryParse(value.Split(' ')[0], out DateTime dateResult) ? dateResult : DateTime.MinValue;
+            if (type == typeof(string))
+                return value;
+
+            throw new ArgumentException($"Unsupported type: {type.Name}");
         }
 
         private static string GetDefaultValueAsString(Type type)
@@ -123,61 +209,6 @@ namespace ActuLiteModel
             throw new ArgumentException($"Unsupported type: {type.Name}");
         }
 
-        private static List<string[]> CartesianProduct(List<string>[] sequences)
-        {
-            var result = new List<string[]>();
-            if (sequences.Length == 0)
-            {
-                result.Add(new string[0]);
-                return result;
-            }
-
-            result.Add(new string[sequences.Length]);
-            for (int i = 0; i < sequences.Length; i++)
-            {
-                var tmp = new List<string[]>();
-                foreach (var sequence in sequences[i])
-                {
-                    foreach (var item in result)
-                    {
-                        var newItem = (string[])item.Clone();
-                        newItem[i] = sequence;
-                        tmp.Add(newItem);
-                    }
-                }
-                result = tmp;
-            }
-
-            return result;
-        }
-
-        private IEnumerable<object> ConvertRow(string[] row)
-        {
-            for (int i = 0; i < row.Length; i++)
-            {
-                yield return ConvertValue(row[i], types[i]);
-            }
-        }
-
-        private static object ConvertValue(string value, Type type)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return GetDefaultValue(type);
-            }
-
-            if (type == typeof(int))
-                return int.Parse(value);
-            if (type == typeof(double))
-                return double.Parse(value);
-            if (type == typeof(DateTime))
-                return DateTime.Parse(value);
-            if (type == typeof(string))
-                return value;
-
-            throw new ArgumentException($"Unsupported type: {type.Name}");
-        }
-
         private static object GetDefaultValue(Type type)
         {
             if (type == typeof(int))
@@ -189,11 +220,15 @@ namespace ActuLiteModel
             if (type == typeof(string))
                 return string.Empty;
 
-            // 다른 값 타입에 대한 기본값
-            if (type.IsValueType)
-                return Activator.CreateInstance(type);
-
             throw new ArgumentException($"Unsupported type: {type.Name}");
+        }
+
+        private IEnumerable<object> ConvertRow(string[] row)
+        {
+            for (int i = 0; i < row.Length; i++)
+            {
+                yield return ConvertValue(row[i], types[i]);
+            }
         }
     }
 }

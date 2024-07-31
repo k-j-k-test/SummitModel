@@ -315,10 +315,9 @@ namespace ActuLight.Pages
             else
             {
                 var filteredData = originalData.Where(item =>
-                    item.Key.Contains(filterText, StringComparison.OrdinalIgnoreCase) ||
-                    item.Count.ToString().Contains(filterText)
+                    item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
                 ).ToList();
-
                 AssumptionDataGrid.ItemsSource = filteredData;
             }
         }

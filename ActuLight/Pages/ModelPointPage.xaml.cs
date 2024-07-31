@@ -9,6 +9,7 @@ using ActuLiteModel;
 using System.Windows.Input;
 using System.ComponentModel;
 using System.Windows.Threading;
+using System.Linq.Expressions;
 
 namespace ActuLight.Pages
 {
@@ -240,9 +241,11 @@ namespace ActuLight.Pages
             else
             {
                 var filteredData = originalData.Where(row =>
-                    row.Any(cell => cell?.ToString().Contains(filterText, StringComparison.OrdinalIgnoreCase) == true)
+                    row.Any(cell =>
+                        cell != null &&
+                        cell.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
+                    )
                 ).ToList();
-
                 MainDataGrid.ItemsSource = filteredData;
             }
         }

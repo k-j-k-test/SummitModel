@@ -2,7 +2,8 @@
 using System.Windows.Controls;
 using ModernWpf;
 using System.IO;
-using System.Text.Json;
+using Newtonsoft.Json;
+using System.Linq;
 
 namespace ActuLight.Pages
 {
@@ -40,14 +41,14 @@ namespace ActuLight.Pages
             if (File.Exists("settings.json"))
             {
                 string json = File.ReadAllText("settings.json");
-                return JsonSerializer.Deserialize<AppSettings>(json);
+                return JsonConvert.DeserializeObject<AppSettings>(json);
             }
             return null;
         }
 
         private void SaveSettingsToFile(AppSettings settings)
         {
-            string json = JsonSerializer.Serialize(settings);
+            string json = JsonConvert.SerializeObject(settings, Formatting.Indented);
             File.WriteAllText("settings.json", json);
         }
 

@@ -11,8 +11,8 @@ using ICSharpCode.AvalonEdit;
 using System.Windows.Input;
 using System.Windows.Data;
 using static ActuLight.Pages.SettingsPage;
-using System.Text.Json;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace ActuLight.Pages
 {
@@ -96,7 +96,7 @@ namespace ActuLight.Pages
             if (File.Exists("settings.json"))
             {
                 string json = File.ReadAllText("settings.json");
-                settings = JsonSerializer.Deserialize<AppSettings>(json);
+                settings = JsonConvert.DeserializeObject<AppSettings>(json);
             }
             
             SignificantDigits = settings?.SignificantDigits ?? 8;

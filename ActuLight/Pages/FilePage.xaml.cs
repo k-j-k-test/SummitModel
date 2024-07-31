@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.IO;
 using Microsoft.Win32;
-using System.Text.Json;
 using ActuLiteModel;
 using System.Windows.Threading;
 using System.Windows.Media;
@@ -14,6 +13,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 using System.Windows.Documents;
+using Newtonsoft.Json;
 
 namespace ActuLight.Pages
 {
@@ -229,7 +229,7 @@ namespace ActuLight.Pages
 
         private void SaveRecentFiles()
         {
-            var json = JsonSerializer.Serialize(recentFiles);
+            var json = JsonConvert.SerializeObject(recentFiles);
             File.WriteAllText(RecentFilesPath, json);
         }
 
@@ -238,7 +238,7 @@ namespace ActuLight.Pages
             if (File.Exists(RecentFilesPath))
             {
                 var json = File.ReadAllText(RecentFilesPath);
-                var loadedFiles = JsonSerializer.Deserialize<List<RecentFile>>(json);
+                var loadedFiles = JsonConvert.DeserializeObject<List<RecentFile>>(json);
                 if (loadedFiles != null)
                 {
                     recentFiles.Clear();

@@ -13,10 +13,9 @@ using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Rendering;
 using ActuLiteModel;
 using System.IO;
-using System.Text.Json;
-using ActuLight.Properties;
 using ModernWpf;
-using System.Windows.Data;
+using Newtonsoft.Json;
+using System.Threading.Tasks;
 
 namespace ActuLight
 {
@@ -439,7 +438,7 @@ namespace ActuLight
             if (File.Exists(jsonPath))
             {
                 string json = File.ReadAllText(jsonPath);
-                var autoCompletionSet = JsonSerializer.Deserialize<AutoCompletionSet>(json);
+                var autoCompletionSet = JsonConvert.DeserializeObject<AutoCompletionSet>(json);
                 _functions = autoCompletionSet.Functions;
                 _cellCompletions = autoCompletionSet.CellCompletions;
             }

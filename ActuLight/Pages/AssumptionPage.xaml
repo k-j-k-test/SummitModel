@@ -18,6 +18,7 @@
         <DataGrid x:Name="AssumptionDataGrid" Grid.Row="1" 
                   AutoGenerateColumns="True" 
                   IsReadOnly="True"
+                  CanUserSortColumns="False"
                   MouseDoubleClick="AssumptionDataGrid_MouseDoubleClick"/>
 
         <!-- 로딩 오버레이 -->

@@ -190,7 +190,7 @@ namespace ActuLight.Pages
                     Header = i.ToString(),
                     Binding = new System.Windows.Data.Binding($"Rates[{index}]")
                     {
-                        StringFormat = "F4",
+                        StringFormat = "F6",
                         TargetNullValue = ""
                     }
                 };
@@ -231,7 +231,7 @@ namespace ActuLight.Pages
                     Foreground = new SolidColorBrush(Colors.LightGray),
                     Separator = new LiveCharts.Wpf.Separator { Stroke = new SolidColorBrush(Colors.DimGray) },
                     FontWeight = FontWeights.Bold,
-                    LabelFormatter = value => Math.Round(value, 4).ToString("F4")
+                    LabelFormatter = value => Math.Round(value, 4).ToString("F6")
                 }
             };
             chart.LegendLocation = LegendLocation.Right;

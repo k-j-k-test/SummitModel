@@ -29,7 +29,7 @@ namespace ActuLiteModel
                 }
 
                 if (!_cache.TryGetValue(methodName, out var methodCache))
-                {
+                { 
                     methodCache = new Dictionary<int, double>();
                     _cache[methodName] = methodCache;
                 }

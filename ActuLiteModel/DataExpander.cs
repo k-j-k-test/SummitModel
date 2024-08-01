@@ -95,13 +95,14 @@ namespace ActuLiteModel
             }
 
             var result = new List<string>();
-            var parts = value.Split(',');
+            var parts = SplitPreservingFunctions(value);
 
-            foreach (var part in parts.Select(p => p.Trim()))
+            foreach (var part in parts)
             {
-                if (part.Contains("~"))
+                var trimmedPart = part.Trim();
+                if (trimmedPart.Contains("~"))
                 {
-                    var range = part.Split('~');
+                    var range = trimmedPart.Split('~');
                     if (range.Length == 2 && int.TryParse(range[0], out int start) && int.TryParse(range[1], out int end))
                     {
                         for (int i = start; i <= end; i++)
@@ -111,21 +112,57 @@ namespace ActuLiteModel
                     }
                     else
                     {
-                        result.Add(part);
+                        result.Add(trimmedPart);
                     }
                 }
-                else if (IsExpression(part) && type != typeof(DateTime))
+                else if (IsExpression(trimmedPart) && type != typeof(DateTime))
                 {
-                    compiledExpressions[key] = context.CompileGeneric<object>(part);
-                    result.Add(part);  // Store the original expression
+                    compiledExpressions[key] = context.CompileGeneric<object>(trimmedPart);
+                    result.Add(trimmedPart);  // Store the original expression
                 }
                 else
                 {
-                    result.Add(part);
+                    result.Add(trimmedPart);
                 }
             }
 
             return result.Count > 0 ? result : new List<string> { GetDefaultValueAsString(type) };
+        }
+
+        private List<string> SplitPreservingFunctions(string input)
+        {
+            var result = new List<string>();
+            var currentPart = new System.Text.StringBuilder();
+            int parenthesesCount = 0;
+
+            foreach (char c in input)
+            {
+                if (c == '(')
+                {
+                    parenthesesCount++;
+                }
+                else if (c == ')')
+                {
+                    parenthesesCount--;
+                }
+
+                if (c == ',' && parenthesesCount == 0)
+                {
+                    result.Add(currentPart.ToString());
+                    currentPart.Clear();
+                }
+                else
+                {
+                    currentPart.Append(c);
+                }
+            }
+
+            if (currentPart.Length > 0)
+            {
+                result.Add(currentPart.ToString());
+            }
+
+            return result;
         }
 
         private List<string[]> CartesianProduct(List<string>[] sequences)

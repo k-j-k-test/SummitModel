@@ -1,50 +1,74 @@
 ﻿using ActuLiteModel;
-using Newtonsoft.Json;
 using System.Windows;
-using System.IO;
 using ModernWpf;
-using System;
+using Newtonsoft.Json;
+using System.IO;
 
 namespace ActuLight
 {
     public partial class App : Application
     {
         public static ModelEngine ModelEngine { get; private set; }
+        public static AppSettingsManager SettingsManager { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
             ModelEngine = new ModelEngine();
-            LoadTheme();
+            SettingsManager = new AppSettingsManager();
+            LoadAndApplySettings();
         }
 
-        private void LoadTheme()
+        private void LoadAndApplySettings()
         {
-            // 기본 테마를 Light로 설정
-            ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
+            SettingsManager.LoadSettings();
+            ApplyTheme(SettingsManager.CurrentSettings.Theme);
+        }
+
+        public static void ApplyTheme(string themeName)
+        {
+            if (themeName == "Dark")
+            {
+                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
+                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Dark;
+            }
+            else
+            {
+                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
+            }
         }
     }
 
     public class AppSettingsManager
     {
-        private const string SettingsFileName = "appSettings.json";
-        private static string SettingsFilePath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, SettingsFileName);
-        public string CurrentTheme { get; set; } = "DarkGreyTheme"; // 기본 테마
+        private const string SettingsFileName = "settings.json";
+        private static string SettingsFilePath => Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, SettingsFileName);
 
-        public static AppSettingsManager Load()
+        public AppSettings CurrentSettings { get; private set; }
+
+        public void LoadSettings()
         {
             if (File.Exists(SettingsFilePath))
             {
                 string json = File.ReadAllText(SettingsFilePath);
-                return JsonConvert.DeserializeObject<AppSettingsManager>(json) ?? new AppSettingsManager();
+                CurrentSettings = JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
             }
-            return new AppSettingsManager();
+            else
+            {
+                CurrentSettings = new AppSettings();
+            }
         }
 
-        public void Save()
+        public void SaveSettings()
         {
-            string json = JsonConvert.SerializeObject(this, Formatting.Indented);
+            string json = JsonConvert.SerializeObject(CurrentSettings, Formatting.Indented);
             File.WriteAllText(SettingsFilePath, json);
         }
+    }
+
+    public class AppSettings
+    {
+        public string Theme { get; set; } = "Light";
+        public int SignificantDigits { get; set; } = 8;
     }
 }

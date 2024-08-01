@@ -22,6 +22,7 @@ namespace ActuLight
     public class SyntaxHighlighter : DocumentColorizingTransformer
     {
         public static Dictionary<string, (Color Dark, Color Light, Color HighContrast)> ColorSchemes;
+        public static int Delay = 300;
 
         private string _currentModel;
         private string _currentCell;
@@ -67,99 +68,109 @@ namespace ActuLight
         //Show AutoCompletion Window
         private async void TextArea_TextEntered(object sender, TextCompositionEventArgs e)
         {
-            await Task.Delay(200);
-
-            if (!(sender is TextArea textArea)) return;
-
-            string currentLine = GetCurrentLine(textArea);
-            string currentWord = GetCurrentWord(textArea);
-
-            var completionData = new List<ICompletionData>();
-
-            if (currentLine.Contains("--"))
+            await Debouncer.Debounce("TextAreaUpdate", Delay, async () =>
             {
-                var parts = currentLine.Split(new[] { "--" }, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length == 2 && parts[1].Trim() == "")
+                if (!(sender is TextArea textArea)) return;
+
+                string currentLine = GetCurrentLine(textArea);
+                string currentWord = GetCurrentWord(textArea);
+
+                var completionData = new List<ICompletionData>();
+
+                if (currentLine.Contains("--"))
                 {
-                    if (_cellCompletions.TryGetValue(parts[0].Trim(), out string completion))
+                    var parts = currentLine.Split(new[] { "--" }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 2 && parts[1].Trim() == "")
                     {
-                        completionData = new List<ICompletionData>
+                        if (_cellCompletions.TryGetValue(parts[0].Trim(), out string completion))
+                        {
+                            completionData = new List<ICompletionData>
                         {
                             new CustomCompletionData(completion, CompletionType.CellCompletion)
                         };
-                        ShowCompletionWindow(textArea, completionData, textArea.Caret.Offset);
+                            await Application.Current.Dispatcher.InvokeAsync(() =>
+                            {
+                                ShowCompletionWindow(textArea, completionData, textArea.Caret.Offset);
+                            });
+                        }
+                        return;
                     }
+                }
+
+                if (string.IsNullOrEmpty(currentWord) || !currentLine.Contains("--") || currentLine.IndexOf("--") >= textArea.Caret.Column)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        _completionWindow?.Close();
+                    });
                     return;
                 }
-            }
 
-            if (string.IsNullOrEmpty(currentWord) || !currentLine.Contains("--") || currentLine.IndexOf("--") >= textArea.Caret.Column)
-            {
-                _completionWindow?.Close();
-                return;
-            }
-
-            // Check if we're inside Assum function
-            var textBeforeCaret = textArea.Document.GetText(0, textArea.Caret.Offset);
-            var assumMatch = Regex.Match(textBeforeCaret, @"Assum\([""']([^""']*)$");
-            if (assumMatch.Success)
-            {
-                // We're inside Assum function, offer assumption completions
-                completionData.AddRange(_assumptions
-                    .Where(assum => assum.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                    .Select(assumption => new CustomCompletionData(assumption, CompletionType.Assumption)));
-            }
-            else
-            {
-                // Check if we're after a model name and a dot
-                var modelMatch = Regex.Match(textBeforeCaret, @"(\w+)({[^}]*})?\.([\w]*)$");
-                if (modelMatch.Success)
+                // Check if we're inside Assum function
+                var textBeforeCaret = textArea.Document.GetText(0, textArea.Caret.Offset);
+                var assumMatch = Regex.Match(textBeforeCaret, @"Assum\([""']([^""']*)$");
+                if (assumMatch.Success)
                 {
-                    string modelName = modelMatch.Groups[1].Value;
-                    string parameters = modelMatch.Groups[2].Value; // This will be empty if no parameters
-                    string cellPrefix = modelMatch.Groups[3].Value;
-                    if (_modelCells.TryGetValue(modelName, out var cells))
-                    {
-                        completionData.AddRange(cells
-                            .Where(cell => cell.StartsWith(cellPrefix, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
-                    }
+                    // We're inside Assum function, offer assumption completions
+                    completionData.AddRange(_assumptions
+                        .Where(assum => assum.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                        .Select(assumption => new CustomCompletionData(assumption, CompletionType.Assumption)));
                 }
                 else
                 {
-                    // Add cell completions
-                    if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
+                    // Check if we're after a model name and a dot
+                    var modelMatch = Regex.Match(textBeforeCaret, @"(\w+)({[^}]*})?\.([\w]*)$");
+                    if (modelMatch.Success)
                     {
-                        completionData.AddRange(currentModelCells
-                            .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                        string modelName = modelMatch.Groups[1].Value;
+                        string parameters = modelMatch.Groups[2].Value; // This will be empty if no parameters
+                        string cellPrefix = modelMatch.Groups[3].Value;
+                        if (_modelCells.TryGetValue(modelName, out var cells))
+                        {
+                            completionData.AddRange(cells
+                                .Where(cell => cell.StartsWith(cellPrefix, StringComparison.OrdinalIgnoreCase))
+                                .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                        }
                     }
+                    else
+                    {
+                        // Add cell completions
+                        if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
+                        {
+                            completionData.AddRange(currentModelCells
+                                .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                                .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                        }
 
-                    // Add function completions
-                    completionData.AddRange(_functions
-                        .Where(func => func.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(func => new CustomCompletionData(func, CompletionType.Function)));
+                        // Add function completions
+                        completionData.AddRange(_functions
+                            .Where(func => func.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                            .Select(func => new CustomCompletionData(func, CompletionType.Function)));
 
-                    // Add model completions
-                    completionData.AddRange(_models
-                        .Where(model => model.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(model => new CustomCompletionData(model, CompletionType.Model)));
+                        // Add model completions
+                        completionData.AddRange(_models
+                            .Where(model => model.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                            .Select(model => new CustomCompletionData(model, CompletionType.Model)));
 
-                    // Add context variable completions
-                    completionData.AddRange(_contextVariables
-                        .Where(var => var.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(var => new CustomCompletionData(var, CompletionType.ContextVariable)));
+                        // Add context variable completions
+                        completionData.AddRange(_contextVariables
+                            .Where(var => var.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
+                            .Select(var => new CustomCompletionData(var, CompletionType.ContextVariable)));
+                    }
                 }
-            }
 
-            if (completionData.Any())
-            {
-                ShowCompletionWindow(textArea, completionData);
-            }
-            else
-            {
-                _completionWindow?.Close();
-            }
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (completionData.Any())
+                    {
+                        ShowCompletionWindow(textArea, completionData);
+                    }
+                    else
+                    {
+                        _completionWindow?.Close();
+                    }
+                });
+            });
         }
 
         private void ShowCompletionWindow(TextArea textArea, IEnumerable<ICompletionData> completionData, int? startOffset = null)

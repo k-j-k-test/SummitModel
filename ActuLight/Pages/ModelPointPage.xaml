@@ -19,6 +19,7 @@
         <DataGrid x:Name="MainDataGrid" Grid.Row="1" 
                   AutoGenerateColumns="False" 
                   IsReadOnly="True"
+                  CanUserSortColumns="False"
                   MouseDoubleClick="MainDataGrid_MouseDoubleClick"/>
 
         <!-- 선택된 데이터 표시 영역 -->

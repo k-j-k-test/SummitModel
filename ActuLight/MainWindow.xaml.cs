@@ -27,6 +27,9 @@ namespace ActuLight
 
             // Ctrl+S 키 이벤트 핸들러 추가
             this.KeyDown += MainWindow_KeyDown;
+
+            // 초기 페이지를 FilePage로 설정
+            NavigateTo("FilePage");
         }
 
         private void MainFrame_Navigating(object sender, NavigatingCancelEventArgs e)

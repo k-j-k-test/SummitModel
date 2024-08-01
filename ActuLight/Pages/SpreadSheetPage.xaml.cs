@@ -7,10 +7,8 @@ using System.Windows.Media;
 using ActuLiteModel;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
-using ICSharpCode.AvalonEdit;
 using System.Windows.Input;
 using System.Windows.Data;
-using static ActuLight.Pages.SettingsPage;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -134,138 +132,51 @@ namespace ActuLight.Pages
 
         private async void ScriptEditor_TextChanged(object sender, EventArgs e)
         {
-            await Task.Delay(250); // 250ms delay to prevent frequent updates
-
-            if (selectedModel == null || !Models.ContainsKey(selectedModel))
+            await Debouncer.Debounce("ScriptEditorUpdate", SyntaxHighlighter.Delay, async () =>
             {
-                return;
-            }
-
-            Model model = Models[selectedModel];
-
-            // Update cellMatches
-            var cellPattern = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)");
-            var newCellMatches = cellPattern.Matches(ScriptEditor.Text);
-
-            // Check for cell changes
-            bool hasCellChanges = cellMatches == null ||
-                                  cellMatches.Count != newCellMatches.Count ||
-                                  !Enumerable.Range(0, cellMatches.Count)
-                                             .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                       cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
-
-            if (hasCellChanges)
-            {
-                cellMatches = newCellMatches;
-                UpdateModelCells(model, cellMatches);
-                UpdateCellList(selectedModel);
-                UpdateSyntaxHighlighter();
-            }
-
-            // Update invokeMatches
-            var invokePattern = new Regex(@"Invoke\((\w+),\s*(\d+)\)");
-            var newInvokeMatches = invokePattern.Matches(ScriptEditor.Text);
-
-            // Check for Invoke changes
-            bool hasInvokeChanges = invokeMatches == null ||
-                                    invokeMatches.Count != newInvokeMatches.Count ||
-                                    !Enumerable.Range(0, invokeMatches.Count)
-                                               .All(i => invokeMatches[i].Groups[1].Value == newInvokeMatches[i].Groups[1].Value &&
-                                                         invokeMatches[i].Groups[2].Value == newInvokeMatches[i].Groups[2].Value);
-
-            if (hasInvokeChanges || hasCellChanges)
-            {
-                invokeMatches = newInvokeMatches;
-                UpdateInvokes(model);
-            }
-        }
-
-        private void AddSheetTab(string sheetName, Sheet sheet)
-        {
-            var tabItem = new TabItem
-            {
-                Header = sheetName
-            };
-
-            var dataGrid = new DataGrid
-            {
-                AutoGenerateColumns = false,
-                IsReadOnly = true
-            };
-
-            if (sheetName == "ErrorSheet")
-            {
-                // ErrorSheet의 경우 에러 메시지를 표시
-                dataGrid.Columns.Add(new DataGridTextColumn
+                if (selectedModel == null || !Models.ContainsKey(selectedModel))
                 {
-                    Header = "Error Message",
-                    Binding = new System.Windows.Data.Binding("[ErrorMessage]")
-                });
-
-                var errorMessage = CellStatusTextBlock.Text;
-                var data = new List<Dictionary<string, string>>
-        {
-            new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
-        };
-
-                dataGrid.ItemsSource = data;
-            }
-            else
-            {
-                var sheetData = sheet.GetAllData();
-                var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-                if (rows.Length > 0)
-                {
-                    var headers = rows[0].Split('\t');
-
-                    foreach (var header in headers)
-                    {
-                        var column = new DataGridTextColumn
-                        {
-                            Header = header,
-                        };
-
-                        var binding = new Binding($"[{header}]");
-
-                        if (header != "t" && double.TryParse(rows[1].Split('\t')[Array.IndexOf(headers, header)], out _))
-                        {
-                            binding.Converter = new SignificantDigitsConverter(SignificantDigits);
-                        }
-
-                        column.Binding = binding;
-                        dataGrid.Columns.Add(column);
-                    }
-
-                    var data = new List<Dictionary<string, string>>();
-
-                    for (int i = 1; i < rows.Length; i++)
-                    {
-                        var values = rows[i].Split('\t');
-                        var rowData = new Dictionary<string, string>();
-                        bool hasNonEmptyValue = false;
-
-                        for (int j = 0; j < headers.Length && j < values.Length; j++)
-                        {
-                            if (!string.IsNullOrWhiteSpace(values[j]))
-                            {
-                                rowData[headers[j]] = values[j];
-                                hasNonEmptyValue = true;
-                            }
-                        }
-
-                        if (hasNonEmptyValue)
-                        {
-                            data.Add(rowData);
-                        }
-                    }
-
-                    dataGrid.ItemsSource = data;
+                    return;
                 }
-            }
 
-            tabItem.Content = dataGrid;
-            SheetTabControl.Items.Add(tabItem);
+                Model model = Models[selectedModel];
+
+                // Update cellMatches
+                var cellPattern = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)");
+                var newCellMatches = cellPattern.Matches(ScriptEditor.Text);
+
+                // Check for cell changes
+                bool hasCellChanges = cellMatches == null ||
+                                      cellMatches.Count != newCellMatches.Count ||
+                                      !Enumerable.Range(0, cellMatches.Count)
+                                                 .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                           cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+                if (hasCellChanges)
+                {
+                    cellMatches = newCellMatches;
+                    UpdateModelCells(model, cellMatches);
+                    UpdateCellList(selectedModel);
+                    UpdateSyntaxHighlighter();
+                }
+
+                // Update invokeMatches
+                var invokePattern = new Regex(@"Invoke\((\w+),\s*(\d+)\)");
+                var newInvokeMatches = invokePattern.Matches(ScriptEditor.Text);
+
+                // Check for Invoke changes
+                bool hasInvokeChanges = invokeMatches == null ||
+                                        invokeMatches.Count != newInvokeMatches.Count ||
+                                        !Enumerable.Range(0, invokeMatches.Count)
+                                                   .All(i => invokeMatches[i].Groups[1].Value == newInvokeMatches[i].Groups[1].Value &&
+                                                             invokeMatches[i].Groups[2].Value == newInvokeMatches[i].Groups[2].Value);
+
+                if (hasInvokeChanges || hasCellChanges)
+                {
+                    invokeMatches = newInvokeMatches;
+                    UpdateInvokes();
+                }
+            });
         }
 
         private void AddModel_Click(object sender, RoutedEventArgs e)
@@ -371,48 +282,53 @@ namespace ActuLight.Pages
             }
         }
 
-        private void UpdateInvokes(Model model)
+        public void UpdateInvokes()
         {
-            try
+            if (Models != null && selectedModel != null && Models.TryGetValue(selectedModel, out var model))
             {
-                // Clear all model sheets
-                foreach (var m in Models.Values)
+                try
                 {
-                    m.Clear();
+                    // Clear all model sheets
+                    foreach (var m in Models.Values)
+                    {
+                        m.Clear();
+                    }
+
+                    // Process each Invoke call
+                    foreach (Match match in invokeMatches)
+                    {
+                        string cellName = match.Groups[1].Value;
+                        int t = int.Parse(match.Groups[2].Value);
+
+                        model.Invoke(cellName, t);
+                    }
                 }
-
-                // Process each Invoke call
-                foreach (Match match in invokeMatches)
+                catch (Exception ex)
                 {
-                    string cellName = match.Groups[1].Value;
-                    int t = int.Parse(match.Groups[2].Value);
+                    // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
+                    model.Sheets.Clear();
+                    var errorSheet = new Sheet();
+                    errorSheet.RegisterMethod("Error", _ => 0);
+                    errorSheet["Error", 0] = 0;  // 에러 표시를 위한 더미 데이터
 
-                    model.Invoke(cellName, t);
+                    // 에러 메시지를 별도의 메서드로 저장
+                    errorSheet.RegisterMethod("ErrorMessage", _ => 0);
+                    errorSheet["ErrorMessage", 0] = 0;
+
+                    model.Sheets["ErrorSheet"] = errorSheet;
+
+                    // CellStatusTextBlock 업데이트
+                    CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
+                }
+                finally
+                {
+                    UpdateSheets();
                 }
             }
-            catch (Exception ex)
+            else
             {
-                // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
-                model.Sheets.Clear();
-                var errorSheet = new Sheet();
-                errorSheet.RegisterMethod("Error", _ => 0);
-                errorSheet["Error", 0] = 0;  // 에러 표시를 위한 더미 데이터
-
-                // 에러 메시지를 별도의 메서드로 저장
-                errorSheet.RegisterMethod("ErrorMessage", _ => 0);
-                errorSheet["ErrorMessage", 0] = 0;
-
-                model.Sheets["ErrorSheet"] = errorSheet;
-
-                // CellStatusTextBlock 업데이트
-                CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
+                return;
             }
-            finally
-            {
-                UpdateSheets();
-
-
-            }            
         }
 
         private void UpdateSheets()
@@ -420,30 +336,78 @@ namespace ActuLight.Pages
             // 현재 선택된 탭의 이름 저장
             string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
 
-            // Clear existing tabs
-            SheetTabControl.Items.Clear();
+            var currentTabs = new Dictionary<string, TabItem>();
+            foreach (TabItem tab in SheetTabControl.Items)
+            {
+                currentTabs[tab.Header.ToString()] = tab;
+            }
 
-            // First, add tabs for the current model's sheets
+            var updatedTabs = new List<TabItem>();
+
+            // 현재 모델의 시트들을 먼저 처리
             if (Models.TryGetValue(selectedModel, out Model currentModel))
             {
                 foreach (var sheetPair in currentModel.Sheets)
                 {
-                    AddSheetTab(sheetPair.Key, sheetPair.Value);
+                    if (currentTabs.TryGetValue(sheetPair.Key, out TabItem existingTab))
+                    {
+                        AddSheetTab(sheetPair.Key, sheetPair.Value, existingTab);
+                        updatedTabs.Add(existingTab);
+                        currentTabs.Remove(sheetPair.Key);
+                    }
+                    else
+                    {
+                        var newTab = new TabItem();
+                        AddSheetTab(sheetPair.Key, sheetPair.Value, newTab);
+                        updatedTabs.Add(newTab);
+                    }
                 }
             }
 
-            // Then, add tabs for other models' sheets
+            // 다른 모델의 시트들을 처리
             foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
             {
                 foreach (var sheetPair in modelPair.Value.Sheets)
                 {
-                    AddSheetTab(sheetPair.Key, sheetPair.Value);
+                    if (currentTabs.TryGetValue(sheetPair.Key, out TabItem existingTab))
+                    {
+                        AddSheetTab(sheetPair.Key, sheetPair.Value, existingTab);
+                        updatedTabs.Add(existingTab);
+                        currentTabs.Remove(sheetPair.Key);
+                    }
+                    else
+                    {
+                        var newTab = new TabItem();
+                        AddSheetTab(sheetPair.Key, sheetPair.Value, newTab);
+                        updatedTabs.Add(newTab);
+                    }
                 }
             }
 
-            // 이전에 선택된 탭 또는 첫 번째 탭 선택
-            if (!string.IsNullOrEmpty(selectedTabName))
+            // UI 스레드에서 TabControl 업데이트
+            Application.Current.Dispatcher.Invoke(() =>
             {
+                // 더 이상 필요 없는 탭 제거
+                foreach (var oldTab in currentTabs.Values)
+                {
+                    SheetTabControl.Items.Remove(oldTab);
+                }
+
+                // 새로운 탭 추가 및 순서 조정
+                for (int i = 0; i < updatedTabs.Count; i++)
+                {
+                    if (!SheetTabControl.Items.Contains(updatedTabs[i]))
+                    {
+                        SheetTabControl.Items.Add(updatedTabs[i]);
+                    }
+                    if (SheetTabControl.Items.IndexOf(updatedTabs[i]) != i)
+                    {
+                        SheetTabControl.Items.Remove(updatedTabs[i]);
+                        SheetTabControl.Items.Insert(i, updatedTabs[i]);
+                    }
+                }
+
+                // 이전에 선택된 탭 또는 첫 번째 탭 선택
                 var tabToSelect = SheetTabControl.Items.Cast<TabItem>().FirstOrDefault(t => t.Header.ToString() == selectedTabName);
                 if (tabToSelect != null)
                 {
@@ -453,11 +417,96 @@ namespace ActuLight.Pages
                 {
                     (SheetTabControl.Items[0] as TabItem).IsSelected = true;
                 }
-            }
-            else if (SheetTabControl.Items.Count > 0)
+            });
+        }
+
+        private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)
+        {
+            DataGrid dataGrid;
+            if (tabItem.Content is DataGrid existingGrid)
             {
-                (SheetTabControl.Items[0] as TabItem).IsSelected = true;
+                dataGrid = existingGrid;
+                dataGrid.Columns.Clear();
+                dataGrid.ItemsSource = null;
             }
+            else
+            {
+                dataGrid = new DataGrid
+                {
+                    AutoGenerateColumns = false,
+                    IsReadOnly = true,
+                    CanUserSortColumns = false
+                };
+                tabItem.Content = dataGrid;
+            }
+
+            if (sheetName == "ErrorSheet")
+            {
+                // ErrorSheet의 경우 에러 메시지를 표시
+                dataGrid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = "Error Message",
+                    Binding = new System.Windows.Data.Binding("[ErrorMessage]")
+                });
+
+                var errorMessage = CellStatusTextBlock.Text;
+                var data = new List<Dictionary<string, string>>
+        {
+            new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
+        };
+
+                dataGrid.ItemsSource = data;
+            }
+            else
+            {
+                var sheetData = sheet.GetAllData();
+                var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+
+                if (rows.Length > 0)
+                {
+                    var headers = rows[0].Split('\t');
+
+                    foreach (var header in headers)
+                    {
+                        var column = new DataGridTextColumn
+                        {
+                            Header = header,
+                        };
+
+                        var binding = new Binding($"[{header}]");
+                        binding.Converter = new SignificantDigitsConverter(SignificantDigits);
+                        column.Binding = binding;
+                        dataGrid.Columns.Add(column);
+                    }
+
+                    var data = new List<Dictionary<string, string>>();
+
+                    for (int i = 1; i < rows.Length; i++)
+                    {
+                        var values = rows[i].Split('\t');
+                        var rowData = new Dictionary<string, string>();
+                        bool hasNonEmptyValue = false;
+
+                        for (int j = 0; j < headers.Length && j < values.Length; j++)
+                        {
+                            if (!string.IsNullOrWhiteSpace(values[j]))
+                            {
+                                rowData[headers[j]] = values[j];
+                                hasNonEmptyValue = true;
+                            }
+                        }
+
+                        if (hasNonEmptyValue)
+                        {
+                            data.Add(rowData);
+                        }
+                    }
+
+                    dataGrid.ItemsSource = data;
+                }
+            }
+
+            tabItem.Header = sheetName;
         }
 
         private void UpdateSyntaxHighlighter()
@@ -516,7 +565,6 @@ namespace ActuLight.Pages
                 MessageBox.Show($"Excel 파일 생성 또는 열기 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
     }
 
     public class SignificantDigitsConverter : IValueConverter

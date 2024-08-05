@@ -28,7 +28,7 @@ namespace ActuLight.Pages
                 string selectedTheme = ((string)selectedItem.Content).Replace(" Theme", "");
                 App.SettingsManager.CurrentSettings.Theme = selectedTheme;
                 App.SettingsManager.SaveSettings();
-                App.ApplyTheme(selectedTheme);
+                App.ApplyTheme();
             }
         }
 

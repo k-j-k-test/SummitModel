@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Windows;
@@ -12,6 +13,7 @@ using System.Windows.Navigation;
 using ActuLight.Pages;
 using ActuLiteModel;
 using Microsoft.Win32;
+using ModernWpf;
 
 namespace ActuLight
 {
@@ -30,6 +32,13 @@ namespace ActuLight
 
             // 초기 페이지를 FilePage로 설정
             NavigateTo("FilePage");
+
+            Application.Current.MainWindow.InvalidateVisual();
+        }
+
+        private void Window_ContentRendered(object sender, EventArgs e)
+        {
+            App.ApplyTheme();
         }
 
         private void MainFrame_Navigating(object sender, NavigatingCancelEventArgs e)
@@ -133,12 +142,11 @@ namespace ActuLight
                 }
 
                 // cell 데이터 가져오기
-                var spreadSheetPage = pageCache["Pages/SpreadsheetPage.xaml"] as SpreadSheetPage;
-                if (spreadSheetPage != null && spreadSheetPage.Models != null)
+                if (App.ModelEngine != null && App.ModelEngine.Models.Any())
                 {
                     var cellData = new List<List<object>>();
                     cellData.Add(new List<object> { "Model", "Cell", "Formula", "Description" }); // 헤더 추가
-                    foreach (var model in spreadSheetPage.Models.Values)
+                    foreach (var model in App.ModelEngine.Models.Values)
                     {
                         foreach (var cell in model.CompiledCells.Values)
                         {

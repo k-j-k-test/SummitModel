@@ -3,16 +3,21 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.modernwpf.com/2019"
         ui:WindowHelper.UseModernWindowStyle="True"
+        ContentRendered="Window_ContentRendered"
         Title="ActuLight" Height="600" Width="1000">
 
     <DockPanel>
         <!-- 글로벌 네비게이션 바 -->
         <ContentControl Content="{StaticResource GlobalNavigationBar}" DockPanel.Dock="Top"/>
 
+        <!-- StatusBar 추가 -->
+        <StatusBar DockPanel.Dock="Bottom" Height="23">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="Ready"/>
+            </StatusBarItem>
+        </StatusBar>
+
         <!-- 페이지 내용을 표시할 Frame -->
         <Frame x:Name="MainFrame" NavigationUIVisibility="Hidden"/>
     </DockPanel>
 </Window>
-    
-    
-    

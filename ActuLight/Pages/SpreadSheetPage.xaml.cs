@@ -26,7 +26,7 @@ namespace ActuLight.Pages
         private string selectedCell;
 
         private MatchCollection cellMatches;
-        private MatchCollection invokeMatches;
+        private List<(string CellName, int T)> invokeList;
 
         public SpreadSheetPage()
         {
@@ -35,6 +35,8 @@ namespace ActuLight.Pages
             ScriptEditor.TextArea.TextView.LineTransformers.Add(SyntaxHighlighter);
             UpdateSyntaxHighlighter();
             LoadSignificantDigitsSetting();
+
+            ScriptEditor.TextChanged += ScriptEditor_TextChanged;
 
             // Ctrl+S 키 이벤트 처리를 위한 핸들러 추가
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
@@ -142,12 +144,13 @@ namespace ActuLight.Pages
                 Model model = Models[selectedModel];
 
                 // Update cellMatches
-                var cellPattern = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)");
+                var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
                 var newCellMatches = cellPattern.Matches(ScriptEditor.Text);
 
                 // Check for cell changes
                 bool hasCellChanges = cellMatches == null ||
-                                      cellMatches.Count != newCellMatches.Count ||
+                                      cellMatches.Count != newCellMatches.Count || 
+                                      sender.ToString() == "save" ||
                                       !Enumerable.Range(0, cellMatches.Count)
                                                  .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
                                                            cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
@@ -155,25 +158,28 @@ namespace ActuLight.Pages
                 if (hasCellChanges)
                 {
                     cellMatches = newCellMatches;
-                    UpdateModelCells(model, cellMatches);
+                    UpdateModelCells();
                     UpdateCellList(selectedModel);
                     UpdateSyntaxHighlighter();
                 }
 
-                // Update invokeMatches
-                var invokePattern = new Regex(@"Invoke\((\w+),\s*(\d+)\)");
+                // Update invokeList
+                var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
                 var newInvokeMatches = invokePattern.Matches(ScriptEditor.Text);
 
+                var newInvokeList = newInvokeMatches
+                    .Cast<Match>()
+                    .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
+                    .ToList();
+
                 // Check for Invoke changes
-                bool hasInvokeChanges = invokeMatches == null ||
-                                        invokeMatches.Count != newInvokeMatches.Count ||
-                                        !Enumerable.Range(0, invokeMatches.Count)
-                                                   .All(i => invokeMatches[i].Groups[1].Value == newInvokeMatches[i].Groups[1].Value &&
-                                                             invokeMatches[i].Groups[2].Value == newInvokeMatches[i].Groups[2].Value);
+                bool hasInvokeChanges = invokeList == null ||
+                                        invokeList.Count != newInvokeList.Count ||
+                                        !invokeList.SequenceEqual(newInvokeList);
 
                 if (hasInvokeChanges || hasCellChanges)
                 {
-                    invokeMatches = newInvokeMatches;
+                    invokeList = newInvokeList;
                     UpdateInvokes();
                 }
             });
@@ -252,8 +258,15 @@ namespace ActuLight.Pages
             }
         }
 
-        private void UpdateModelCells(Model model, MatchCollection cellMatches)
+        private void UpdateModelCells()
         {
+            if (selectedModel == null || !Models.ContainsKey(selectedModel))
+            {
+                return;
+            }
+
+            Model model = Models[selectedModel];
+
             var newCells = new HashSet<string>();
 
             foreach (Match match in cellMatches)
@@ -295,11 +308,8 @@ namespace ActuLight.Pages
                     }
 
                     // Process each Invoke call
-                    foreach (Match match in invokeMatches)
+                    foreach (var (cellName, t) in invokeList)
                     {
-                        string cellName = match.Groups[1].Value;
-                        int t = int.Parse(match.Groups[2].Value);
-
                         model.Invoke(cellName, t);
                     }
                 }
@@ -526,8 +536,7 @@ namespace ActuLight.Pages
             if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
-                var newCellMatches = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)").Matches(ScriptEditor.Text);
-                UpdateModelCells(Models[selectedModel], newCellMatches);
+                ScriptEditor_TextChanged("save", null);
 
                 // MainWindow의 SaveExcelFile 메서드 호출
                 var mainWindow = Application.Current.MainWindow as MainWindow;

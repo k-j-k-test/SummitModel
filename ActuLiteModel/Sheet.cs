@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -7,10 +8,10 @@ namespace ActuLiteModel
 {
     public class Sheet
     {
-        private readonly Dictionary<string, Dictionary<int, double>> _cache = new Dictionary<string, Dictionary<int, double>>();
-        private readonly Dictionary<string, Func<int, double>> _methods = new Dictionary<string, Func<int, double>>();
+        private Dictionary<string, Dictionary<int, double>> _cache = new Dictionary<string, Dictionary<int, double>>();
+        private Dictionary<string, Func<int, double>> _methods = new Dictionary<string, Func<int, double>>();
 
-        public const int MaxT = 2000; // 최대 t 값 설정
+        public const int MaxT = 100; // 최대 t 값 설정
         public CircularReferenceDetector CircularReferenceDetector { get; set; } = new CircularReferenceDetector();
 
         public double this[string methodName, int t]
@@ -25,7 +26,8 @@ namespace ActuLiteModel
                 if (t < 0) return 0;
                 if (t > MaxT)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(t), $"t 값은 {MaxT}를 초과할 수 없습니다.");
+                    throw new ArgumentOutOfRangeException(nameof(t),
+                        $"t 값은 {MaxT}를 초과할 수 없습니다. 현재 t: {t}, 현재 호출 스택: {CircularReferenceDetector.GetCallStackString()}");
                 }
 
                 if (!_cache.TryGetValue(methodName, out var methodCache))
@@ -120,51 +122,107 @@ namespace ActuLiteModel
         }
 
         public bool IsEmpty() => !_cache.Values.Any(v => v.Any());
+
+        public enum SortOption
+        {
+            Default,
+            Alphabetical,
+            FirstCalculationTime
+        }
+
+        public void ChangeCellOrder(SortOption sortOption)
+        {
+            IEnumerable<string> sortedKeys;
+
+            switch (sortOption)
+            {
+                case SortOption.Alphabetical:
+                    sortedKeys = _cache.Keys.OrderBy(k => k);
+                    break;
+                case SortOption.FirstCalculationTime:
+                    var methodCallOrder = CircularReferenceDetector.GetMethodCalls()
+                        .Select(kvp => kvp.Key.MethodName)
+                        .Distinct()
+                        .ToList();
+
+                    sortedKeys = methodCallOrder
+                        .Concat(_cache.Keys.Except(methodCallOrder))
+                        .ToList();
+                    break;
+                default:
+                    return; // 기본 정렬은 변경하지 않음
+            }
+
+            var newCache = new Dictionary<string, Dictionary<int, double>>();
+            foreach (var key in sortedKeys)
+            {
+                if (_cache.TryGetValue(key, out var value))
+                {
+                    newCache[key] = value;
+                }
+            }
+
+            _cache = newCache;
+        }
     }
 
     public class CircularReferenceDetector
     {
-        private Dictionary<int, Stack<string>> _calculationStack = new Dictionary<int, Stack<string>>();
+        private readonly Stack<(string MethodName, int T)> _callStack = new Stack<(string, int)>();
+        private readonly Dictionary<(string MethodName, int T), int> _methodCalls = new Dictionary<(string, int), int>();
 
         public void PushMethod(string methodName, int t)
         {
-            if (!_calculationStack.TryGetValue(t, out var stack))
+            var key = (methodName, t);
+            if (_methodCalls.TryGetValue(key, out int count))
             {
-                stack = new Stack<string>();
-                _calculationStack[t] = stack;
+                if (count > 0)
+                {
+                    throw new CircularReferenceException(GetCallStackString());
+                }
+                _methodCalls[key]++;
             }
-
-            if (stack.Contains(methodName))
+            else
             {
-                var circularPath = new Stack<string>(stack.Reverse());
-                circularPath.Push(methodName);
-                throw new CircularReferenceException(GetCircularPathString(circularPath, t));
+                _methodCalls[key] = 1;
             }
-
-            stack.Push(methodName);
+            _callStack.Push(key);
         }
 
         public void PopMethod()
         {
-            foreach (var stack in _calculationStack.Values)
+            if (_callStack.Count > 0)
             {
-                if (stack.Count > 0)
-                {
-                    stack.Pop();
-                }
-            }
-
-            // Remove empty stacks
-            var emptyKeys = _calculationStack.Where(kvp => kvp.Value.Count == 0).Select(kvp => kvp.Key).ToList();
-            foreach (var key in emptyKeys)
-            {
-                _calculationStack.Remove(key);
+                var key = _callStack.Pop();
+                _methodCalls[key]--;
             }
         }
 
-        private string GetCircularPathString(Stack<string> path, int t)
+        public Dictionary<(string MethodName, int T), int> GetMethodCalls()
         {
-            return string.Join(" -> ", path.Reverse().Select(m => $"{m}[{t}]"));
+            return new Dictionary<(string MethodName, int T), int>(_methodCalls);
+        }
+
+        public List<(string MethodName, int T)> GetCallStack()
+        {
+            return _callStack.Reverse().ToList();
+        }
+
+        public string GetCallStackString()
+        {
+            var stack = GetCallStack();
+            if (stack.Count <= 20)
+            {
+                return string.Join(" -> ", stack.Select(call => $"{call.MethodName}[{call.T}]"));
+            }
+            else
+            {
+                var first10 = stack.Take(10);
+                var last10 = stack.Skip(Math.Max(0, stack.Count - 10));
+                return string.Join(" -> ", first10.Select(call => $"{call.MethodName}[{call.T}]")) +
+                       " -> ... -> " +
+                       string.Join(" -> ", last10.Select(call => $"{call.MethodName}[{call.T}]"));
+            }
         }
     }
 

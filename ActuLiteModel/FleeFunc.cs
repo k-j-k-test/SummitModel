@@ -15,12 +15,12 @@ namespace ActuLiteModel
 
         public static double Eval(string modelName, string var, double t)
         {
-            return GetCellValue(modelName, var, Math.Min(ToInt(t), Sheet.MaxT));
+            return GetCellValue(modelName, var, ToInt(t));
         }
 
         public static double Eval(string modelName, string var, double t, params object[] kvpairs)
         {
-            return GetCellValue(modelName, var, Math.Min(ToInt(t), Sheet.MaxT), kvpairs);
+            return GetCellValue(modelName, var, ToInt(t), kvpairs);
         }
 
         public static double Assum(string modelName, double t, params object[] assumptionKeys)
@@ -34,7 +34,13 @@ namespace ActuLiteModel
             int _end = ToInt(end);
 
             if (start > end) return 0;
-            return Enumerable.Range(_start, Math.Min(_end - _start + 1, Sheet.MaxT + 1)).Sum(t => GetCellValue(modelName, var, t));
+
+            if (_end > Sheet.MaxT)
+            {
+                throw new ArgumentOutOfRangeException($"{var}, Sum함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+            }
+
+            return Enumerable.Range(_start, _end - _start + 1).Sum(t => GetCellValue(modelName, var, t));
         }
 
         public static double Prd(string modelName, string var, double start, double end)
@@ -43,7 +49,13 @@ namespace ActuLiteModel
             int _end = ToInt(end);
 
             if (start > end) return 0;
-            return Enumerable.Range(_start, Math.Min(_end - _start + 1, Sheet.MaxT + 1)).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
+
+            if (_end > Sheet.MaxT)
+            {
+                throw new ArgumentOutOfRangeException($"{var}, Prd함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+            }
+
+            return Enumerable.Range(_start, _end - _start + 1).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
         }
 
         public static double Max(params object[] vals)
@@ -153,7 +165,7 @@ namespace ActuLiteModel
             double val = model.Sheets[sheetName][cellName, t];
 
             // 초기 상태로 복원
-            RestoreInitialState(model, initialState, additionalParameter);
+            RestoreInitialState(model, initialState);
 
             // 추가된 파라미터 제거
             modelParameter.Remove(additionalParameter);
@@ -189,7 +201,7 @@ namespace ActuLiteModel
         }
 
         // 모델의 초기 상태를 복원하는 메서드
-        private static void RestoreInitialState(Model model, Dictionary<string, object> initialState, Parameter additionalParameter)
+        private static void RestoreInitialState(Model model, Dictionary<string, object> initialState)
         {
             foreach (var kvp in initialState)
             {
@@ -200,14 +212,7 @@ namespace ActuLiteModel
         // 변수 값을 설정하는 메서드 (Input_mp 속성 기반 타입 변환)
         private static void SetVariableValue(IDictionary<string, object> variables, string key, object value)
         {
-            var propertyInfo = typeof(Input_mp).GetProperty(key);
-            if (propertyInfo == null)
-            {
-                variables[key] = value;
-                return;
-            }
-
-            variables[key] = Convert.ChangeType(value, propertyInfo.PropertyType);
+            variables[key] = value;
         }
 
         private static double GetAssumptionValue(string modelName, int t, string[] assumptionKeys)

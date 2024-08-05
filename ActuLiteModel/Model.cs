@@ -48,12 +48,60 @@ namespace ActuLiteModel
             //CompiledCells[name].GetTest();
         }
 
+        // 매우 큰 값의 임계점을 정의
+        private const double MaxAllowedValue = 99999999999999;
+
         public void Invoke(string cellName, int t)
         {
-            AddSheet(Name);
-            t = Math.Min(t, Sheet.MaxT);
-            Engine.Context.Variables["t"] = t;
-            Sheets[Name][cellName, t] = Sheets[Name].GetMethod(cellName)(t);   
+            try
+            {
+                AddSheet(Name);
+                t = Math.Min(t, Sheet.MaxT);
+                Engine.Context.Variables["t"] = t;
+
+                if (!Sheets.TryGetValue(Name, out var sheet))
+                {
+                    throw new InvalidOperationException($"시트 '{Name}'을 찾을 수 없습니다.");
+                }
+
+                var method = sheet.GetMethod(cellName);
+                if (method == null)
+                {
+                    throw new ArgumentException($"셀 '{cellName}'에 대한 메서드를 찾을 수 없습니다.");
+                }
+
+                double result = method(t);
+
+                // 결과 값이 무한대이거나 허용 범위를 초과하는 경우 OverflowException 발생
+                if (double.IsInfinity(result) || Math.Abs(result) > MaxAllowedValue)
+                {
+                    throw new OverflowException($"계산 결과가 허용 범위를 초과했습니다: 셀 {cellName}, t={t}, 결과={result}");
+                }
+
+                sheet[cellName, t] = result;
+
+                foreach(var sh in Sheets)
+                {
+                    sh.Value.ChangeCellOrder(Sheet.SortOption.FirstCalculationTime);
+                }
+                
+            }
+            catch (CircularReferenceException ex)
+            {
+                throw new CircularReferenceException($"순환 참조 감지: 셀 {cellName}, t={t}. 경로: {ex.Message}");
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                throw new ArgumentOutOfRangeException($"범위 초과 오류: 셀 {cellName}, t={t}. 오류: {ex.Message}", ex);
+            }
+            catch (OverflowException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"예상치 못한 오류 발생: 셀 {cellName}, t={t}. 오류: {ex.Message}", ex);
+            }
         }
 
         public void Clear()

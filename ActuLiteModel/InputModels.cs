@@ -6,40 +6,6 @@ using System.Threading.Tasks;
 
 namespace ActuLiteModel
 {
-    public class Input_mp
-    {
-        public int ID { get; set; }
-        public string ProductCode { get; set; }
-        public string RiderCode { get; set; }
-        public string Model { get; set; }
-        public int Age { get; set; }
-        public int n { get; set; }
-        public int m { get; set; }
-        public double SA { get; set; }
-        public int Freq { get; set; }
-        public int F1 { get; set; }
-        public int F2 { get; set; }
-        public int F3 { get; set; }
-        public int F4 { get; set; }
-        public int F5 { get; set; }
-        public int F6 { get; set; }
-        public int F7 { get; set; }
-        public int F8 { get; set; }
-        public int F9 { get; set; }
-        public string A1 { get; set; }
-        public string A2 { get; set; }
-        public string A3 { get; set; }
-        public string A4 { get; set; }
-        public string A5 { get; set; }
-        public string A6 { get; set; }
-        public string A7 { get; set; }
-        public string A8 { get; set; }
-        public string A9 { get; set; }
-        public DateTime D1 { get; set; }
-        public DateTime D2 { get; set; }
-        public int t0 { get; set; }
-    }
-
     public class Input_cell
     {
         public string Model { get; set; }

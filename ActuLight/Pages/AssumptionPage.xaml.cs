@@ -288,11 +288,6 @@ namespace ActuLight.Pages
             return 0;
         }
 
-        private void ShowErrorMessage(string message)
-        {
-            MessageBox.Show(message, "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-
         private async void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (isSearching) return;

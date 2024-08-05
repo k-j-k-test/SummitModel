@@ -22,14 +22,12 @@ namespace ActuLight
         private void LoadAndApplySettings()
         {
             SettingsManager.LoadSettings();
-            ApplyTheme(SettingsManager.CurrentSettings.Theme);
         }
 
-        public static void ApplyTheme(string themeName)
+        public static void ApplyTheme()
         {
-            if (themeName == "Dark")
+            if (SettingsManager.CurrentSettings.Theme == "Dark")
             {
-                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
                 ThemeManager.Current.ApplicationTheme = ApplicationTheme.Dark;
             }
             else
@@ -37,6 +35,7 @@ namespace ActuLight
                 ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
             }
         }
+
     }
 
     public class AppSettingsManager

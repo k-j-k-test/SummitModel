@@ -4,17 +4,16 @@
              xmlns:local="clr-namespace:ActuLight"
              xmlns:ui="http://schemas.modernwpf.com/2019"
              StartupUri="MainWindow.xaml">
-
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemeResources />
                 <ui:XamlControlsResources />
+                <!-- 여기에 다른 리소스 사전들을 추가 -->
             </ResourceDictionary.MergedDictionaries>
 
             <local:MenuBar x:Key="GlobalMenuBar" />
             <local:NavigationBar x:Key="GlobalNavigationBar" />
-
         </ResourceDictionary>
     </Application.Resources>
 </Application>

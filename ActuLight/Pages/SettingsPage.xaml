@@ -22,6 +22,16 @@
                     <ComboBoxItem Content="15"/>
                 </ComboBox>
             </StackPanel>
+
+            <StackPanel Grid.Row="2" Margin="0,20,0,0">
+                <TextBlock Text="Select DataGrid Sort Option" Margin="0,0,0,10"/>
+                <ComboBox x:Name="DataGridSortOptionSelector" Width="200" SelectionChanged="DataGridSortOptionSelector_SelectionChanged">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Cell Definition Order"/>
+                    <ComboBoxItem Content="Alphabetical"/>
+                </ComboBox>
+            </StackPanel>
+            
         </StackPanel>
  
         

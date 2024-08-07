@@ -45,7 +45,6 @@ namespace ActuLiteModel
         {
             CompiledCell compiledCell = new CompiledCell(name, formula, description, this);
             CompiledCells[name] = compiledCell;
-            //CompiledCells[name].GetTest();
         }
 
         // 매우 큰 값의 임계점을 정의
@@ -82,7 +81,8 @@ namespace ActuLiteModel
 
                 foreach(var sh in Sheets)
                 {
-                    sh.Value.ChangeCellOrder(Sheet.SortOption.FirstCalculationTime);
+                    // 셀 정렬 순서변경
+                    //sh.Value.ChangeCacheOrder(Sheet.SortOption.FirstCalculationTime);
                 }
                 
             }

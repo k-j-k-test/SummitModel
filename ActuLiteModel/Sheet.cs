@@ -11,7 +11,7 @@ namespace ActuLiteModel
         private Dictionary<string, Dictionary<int, double>> _cache = new Dictionary<string, Dictionary<int, double>>();
         private Dictionary<string, Func<int, double>> _methods = new Dictionary<string, Func<int, double>>();
 
-        public const int MaxT = 100; // 최대 t 값 설정
+        public const int MaxT = 2000; // 최대 t 값 설정
         public CircularReferenceDetector CircularReferenceDetector { get; set; } = new CircularReferenceDetector();
 
         public double this[string methodName, int t]
@@ -130,39 +130,14 @@ namespace ActuLiteModel
             FirstCalculationTime
         }
 
-        public void ChangeCellOrder(SortOption sortOption)
+        public void SortCache(Func<string, object> sortKeySelector)
         {
-            IEnumerable<string> sortedKeys;
-
-            switch (sortOption)
+            var sortedItems = _cache.OrderBy(item => sortKeySelector(item.Key)).ToList();
+            _cache.Clear();
+            foreach (var item in sortedItems)
             {
-                case SortOption.Alphabetical:
-                    sortedKeys = _cache.Keys.OrderBy(k => k);
-                    break;
-                case SortOption.FirstCalculationTime:
-                    var methodCallOrder = CircularReferenceDetector.GetMethodCalls()
-                        .Select(kvp => kvp.Key.MethodName)
-                        .Distinct()
-                        .ToList();
-
-                    sortedKeys = methodCallOrder
-                        .Concat(_cache.Keys.Except(methodCallOrder))
-                        .ToList();
-                    break;
-                default:
-                    return; // 기본 정렬은 변경하지 않음
+                _cache.Add(item.Key, item.Value);
             }
-
-            var newCache = new Dictionary<string, Dictionary<int, double>>();
-            foreach (var key in sortedKeys)
-            {
-                if (_cache.TryGetValue(key, out var value))
-                {
-                    newCache[key] = value;
-                }
-            }
-
-            _cache = newCache;
         }
     }
 

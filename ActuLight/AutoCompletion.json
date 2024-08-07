@@ -1,0 +1,19 @@
+{
+  "Functions": [
+    "Invoke",
+    "Sum",
+    "Prd",
+    "Assum",
+    "If"
+  ],
+  "CellCompletions": {
+    "q1": "Assum(\"mort\")",
+    "l1": "If(t=0, 1, l1[t-1] * (1-q1[t]))",
+    "prem": "If(t=0, SA*0.05, 0)",
+    "surr": "max(0, l1[t]*SA*0.8 - exp[t])",
+    "exp": "If(t=0, SA*0.3, prem[t]*0.05)",
+    "cf": "prem[t] - surr[t] - exp[t]",
+    "disc": "1 / (1 + 0.05)^t",
+    "pv": "cf[t] * disc[t]"
+  }
+}

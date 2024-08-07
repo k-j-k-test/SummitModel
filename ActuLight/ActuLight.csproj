@@ -7,12 +7,24 @@
     <StartupObject>ActuLight.App</StartupObject>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+  
   <ItemGroup>
-    <Compile Remove="Themes\**" />
-    <EmbeddedResource Remove="Themes\**" />
-    <None Remove="Themes\**" />
-    <Page Remove="Themes\**" />
+    <Compile Remove="Themes\*" />
+    <EmbeddedResource Remove="Themes\*" />
+    <None Remove="Themes\*" />
+    <Page Remove="Themes\*" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <None Remove="AutoCompletion.json" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Include="AutoCompletion.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
     <PackageReference Include="EPPlus.Core" Version="1.5.4" />
@@ -21,9 +33,11 @@
     <PackageReference Include="ModernWpfUI" Version="0.9.6" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
+  
   <ItemGroup>
     <ProjectReference Include="..\ActuLiteModel\ActuLiteModel.csproj" />
   </ItemGroup>
+  
   <ItemGroup>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
@@ -31,10 +45,18 @@
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
   </ItemGroup>
+  
   <ItemGroup>
     <None Update="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
+  <Target Name="RemoveLanguageFolders" AfterTargets="Build">
+    <ItemGroup>
+      <LanguageFoldersToRemove Include="$(OutputPath)af-ZA;$(OutputPath)am-ET;$(OutputPath)ar-SA;$(OutputPath)az-Latn-AZ;$(OutputPath)be-BY;$(OutputPath)bg-BG;$(OutputPath)bn-BD;$(OutputPath)bs-Latn-BA;$(OutputPath)ca-ES;$(OutputPath)cs-CZ;$(OutputPath)da-DK;$(OutputPath)de-DE;$(OutputPath)el-GR;$(OutputPath)es-ES;$(OutputPath)et-EE;$(OutputPath)eu-ES;$(OutputPath)fa-IR;$(OutputPath)fi-FI;$(OutputPath)fr-FR;$(OutputPath)gl-ES;$(OutputPath)he-IL;$(OutputPath)hi-IN;$(OutputPath)hr-HR;$(OutputPath)hu-HU;$(OutputPath)hy-AM;$(OutputPath)id-ID;$(OutputPath)is-IS;$(OutputPath)it-IT;$(OutputPath)ja-JP;$(OutputPath)ka-GE;$(OutputPath)kk-KZ;$(OutputPath)km-KH;$(OutputPath)kn-IN;$(OutputPath)ko-KR;$(OutputPath)lo-LA;$(OutputPath)lt-LT;$(OutputPath)lv-LV;$(OutputPath)mk-MK;$(OutputPath)ml-IN;$(OutputPath)mn-MN;$(OutputPath)mr-IN;$(OutputPath)ms-MY;$(OutputPath)nb-NO;$(OutputPath)nl-NL;$(OutputPath)pl-PL;$(OutputPath)pt-BR;$(OutputPath)pt-PT;$(OutputPath)ro-RO;$(OutputPath)ru-RU;$(OutputPath)sk-SK;$(OutputPath)sl-SI;$(OutputPath)sq-AL;$(OutputPath)sr-Latn-RS;$(OutputPath)sv-SE;$(OutputPath)sw-KE;$(OutputPath)ta-IN;$(OutputPath)te-IN;$(OutputPath)th-TH;$(OutputPath)tr-TR;$(OutputPath)uk-UA;$(OutputPath)uz-Latn-UZ;$(OutputPath)vi-VN;$(OutputPath)zh-CN;$(OutputPath)zh-TW;$(OutputPath)en-GB;$(OutputPath)es-MX;$(OutputPath)fr-CA;$(OutputPath)nn-NO" />
+    </ItemGroup>
+    <RemoveDir Directories="@(LanguageFoldersToRemove)" />
+  </Target>
 </Project>

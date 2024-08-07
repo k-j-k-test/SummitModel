@@ -11,6 +11,9 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.IO;
 using Newtonsoft.Json;
+using System.Windows.Controls.Primitives;
+using System.Threading;
+using System.Collections.Concurrent;
 
 namespace ActuLight.Pages
 {
@@ -21,6 +24,9 @@ namespace ActuLight.Pages
         public Dictionary<string, Model> Models = App.ModelEngine.Models;
         public Dictionary<string, string> Scripts { get; set; } = new Dictionary<string, string>();
         public int SignificantDigits;
+
+        public int ThrottleMs = 300;
+        public int DebounceMs = 500;
 
         private string selectedModel;
         private string selectedCell;
@@ -134,55 +140,73 @@ namespace ActuLight.Pages
 
         private async void ScriptEditor_TextChanged(object sender, EventArgs e)
         {
-            await Debouncer.Debounce("ScriptEditorUpdate", SyntaxHighlighter.Delay, async () =>
+            if (ThrottlerAsync.ShouldExecute("ScriptEditor_TextChanged", 300))
             {
-                if (selectedModel == null || !Models.ContainsKey(selectedModel))
+                await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 500, async () =>
                 {
-                    return;
-                }
+                    await ProcessTextChangeInternal(ScriptEditor.Text);
+                });
+            }
+        }
 
-                Model model = Models[selectedModel];
+        private async Task ProcessTextChangeInternal(string text)
+        {
+            // 여기에 기존의 ProcessTextChangeInternal 내용을 유지합니다.
+            // UI 관련 작업은 Dispatcher.Invoke를 사용합니다.
 
-                // Update cellMatches
-                var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
-                var newCellMatches = cellPattern.Matches(ScriptEditor.Text);
+            if (selectedModel == null || !Models.ContainsKey(selectedModel))
+            {
+                return;
+            }
 
-                // Check for cell changes
-                bool hasCellChanges = cellMatches == null ||
-                                      cellMatches.Count != newCellMatches.Count || 
-                                      sender.ToString() == "save" ||
-                                      !Enumerable.Range(0, cellMatches.Count)
-                                                 .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                           cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+            Model model = Models[selectedModel];
 
-                if (hasCellChanges)
+            // Update cellMatches
+            var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
+            var newCellMatches = cellPattern.Matches(text);
+
+            // Check for cell changes
+            bool hasCellChanges = cellMatches == null ||
+                                  cellMatches.Count != newCellMatches.Count ||
+                                  !Enumerable.Range(0, cellMatches.Count)
+                                             .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                       cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+            if (hasCellChanges)
+            {
+                cellMatches = newCellMatches;
+                UpdateModelCells();
+                await Dispatcher.InvokeAsync(() =>
                 {
-                    cellMatches = newCellMatches;
-                    UpdateModelCells();
                     UpdateCellList(selectedModel);
                     UpdateSyntaxHighlighter();
-                }
+                });
+            }
 
-                // Update invokeList
-                var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
-                var newInvokeMatches = invokePattern.Matches(ScriptEditor.Text);
+            // Update invokeList
+            var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
+            var newInvokeMatches = invokePattern.Matches(text);
 
-                var newInvokeList = newInvokeMatches
-                    .Cast<Match>()
-                    .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
-                    .ToList();
+            var newInvokeList = newInvokeMatches
+                .Cast<Match>()
+                .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
+                .ToList();
 
-                // Check for Invoke changes
-                bool hasInvokeChanges = invokeList == null ||
-                                        invokeList.Count != newInvokeList.Count ||
-                                        !invokeList.SequenceEqual(newInvokeList);
+            // Check for Invoke changes
+            bool hasInvokeChanges = invokeList == null ||
+                                    invokeList.Count != newInvokeList.Count ||
+                                    !invokeList.SequenceEqual(newInvokeList);
 
-                if (hasInvokeChanges || hasCellChanges)
+            if (hasInvokeChanges || hasCellChanges)
+            {
+                invokeList = newInvokeList;
+                await Dispatcher.InvokeAsync(() =>
                 {
-                    invokeList = newInvokeList;
                     UpdateInvokes();
-                }
-            });
+                    SortSheets();
+                    UpdateSheets();
+                });
+            }
         }
 
         private void AddModel_Click(object sender, RoutedEventArgs e)
@@ -226,16 +250,26 @@ namespace ActuLight.Pages
             if (Models.TryGetValue(selectedModel, out Model model))
             {
                 var cellItems = new List<UIElement>();
-                foreach (var cell in model.CompiledCells)
+
+                // cellMatches를 사용하여 셀 순서 유지
+                if (cellMatches != null)
                 {
-                    var textBlock = new TextBlock { Text = cell.Key };
-                    if (!cell.Value.IsCompiled)
+                    foreach (Match match in cellMatches)
                     {
-                        textBlock.Foreground = Brushes.Red;
-                        textBlock.FontWeight = FontWeights.Bold;
+                        string cellName = match.Groups["cellName"].Value;
+                        if (model.CompiledCells.TryGetValue(cellName, out CompiledCell cell))
+                        {
+                            var textBlock = new TextBlock { Text = cellName };
+                            if (!cell.IsCompiled)
+                            {
+                                textBlock.Foreground = Brushes.Red;
+                                textBlock.FontWeight = FontWeights.Bold;
+                            }
+                            cellItems.Add(textBlock);
+                        }           
                     }
-                    cellItems.Add(textBlock);
                 }
+
                 CellsList.ItemsSource = cellItems;
             }
             else
@@ -341,8 +375,10 @@ namespace ActuLight.Pages
             }
         }
 
-        private void UpdateSheets()
+        public void UpdateSheets()
         {
+            SortSheets();
+
             // 현재 선택된 탭의 이름 저장
             string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
 
@@ -445,7 +481,7 @@ namespace ActuLight.Pages
                 {
                     AutoGenerateColumns = false,
                     IsReadOnly = true,
-                    CanUserSortColumns = false
+                    CanUserSortColumns = false,            
                 };
                 tabItem.Content = dataGrid;
             }
@@ -461,9 +497,9 @@ namespace ActuLight.Pages
 
                 var errorMessage = CellStatusTextBlock.Text;
                 var data = new List<Dictionary<string, string>>
-        {
-            new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
-        };
+                {
+                    new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
+                };
 
                 dataGrid.ItemsSource = data;
             }
@@ -478,7 +514,7 @@ namespace ActuLight.Pages
 
                     foreach (var header in headers)
                     {
-                        var column = new DataGridTextColumn
+                        var column = new DataGridTextColumn() 
                         {
                             Header = header,
                         };
@@ -510,13 +546,53 @@ namespace ActuLight.Pages
                         {
                             data.Add(rowData);
                         }
-                    }
+                    }  
 
                     dataGrid.ItemsSource = data;
                 }
             }
-
+            App.ApplyTheme();
             tabItem.Header = sheetName;
+        }
+
+        private void SortSheets()
+        {
+            var sortOption = App.SettingsManager.CurrentSettings.DataGridSortOption;
+
+            foreach (var model in Models.Values)
+            {
+                foreach (var sheet in model.Sheets.Values)
+                {
+                    switch (sortOption)
+                    {
+                        case DataGridSortOption.CellDefinitionOrder:
+                            SortSheetByCellDefinition(sheet);
+                            break;
+                        case DataGridSortOption.Alphabetical:
+                            sheet.SortCache(key => key);
+                            break;
+                            // Default case: 기존 순서 유지
+                    }
+                }
+            }
+        }
+
+        private void SortSheetByCellDefinition(Sheet sheet)
+        {
+            if (cellMatches == null)
+            {
+                return;
+            }
+
+            var cellOrder = cellMatches.Cast<Match>()
+                .Select(m => m.Groups["cellName"].Value)
+                .ToList();
+
+            sheet.SortCache(key =>
+            {
+                int index = cellOrder.IndexOf(key);
+                return index >= 0 ? index : int.MaxValue;
+            });
         }
 
         private void UpdateSyntaxHighlighter()
@@ -566,6 +642,7 @@ namespace ActuLight.Pages
 
                 string filePath = Path.Combine(samplesDirectory, $"Sample.xlsx");
 
+                // Models가 이미 정렬되어 있으므로, 그대로 SaveToExcel 메서드에 전달
                 App.ModelEngine.SaveToExcel(filePath);
                 ModelEngine.RunLatestExcelFile(filePath);
             }
@@ -635,4 +712,6 @@ namespace ActuLight.Pages
             }
         }
     }
+
+    
 }

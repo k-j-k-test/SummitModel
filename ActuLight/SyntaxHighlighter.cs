@@ -18,13 +18,13 @@ using Newtonsoft.Json;
 using System.Threading.Tasks;
 using System.Windows.Media.Animation;
 using System.Security.RightsManagement;
+using System.Collections.Concurrent;
 
 namespace ActuLight
 {
     public class SyntaxHighlighter : DocumentColorizingTransformer
     {
         public static Dictionary<string, (Color Dark, Color Light, Color HighContrast)> ColorSchemes;
-        public static int Delay = 300;
 
         private string _currentModel;
         private string _currentCell;
@@ -68,41 +68,29 @@ namespace ActuLight
         }
 
         //Show AutoCompletion Window
-        public async void TextArea_TextEntered(object sender, EventArgs  e)
+        private void TextArea_TextEntered(object sender, EventArgs e)
         {
-            await Debouncer.Debounce("TextAreaUpdate", 10, async () =>
+            if (!(sender is TextEditor textEditor)) return;
+
+            var textArea = textEditor.TextArea;
+            var (currentLine, textBeforeCaret, currentWord) = GetCurrentLineInfo(textArea);
+
+            var completionData = GetCompletionData(textBeforeCaret, currentLine, currentWord);
+
+            if (completionData.Any())
             {
-                if (!(sender is TextEditor textEditor)) return;
-
-                var textArea = textEditor.TextArea;
-
-                // UI 스레드에서 필요한 정보를 가져옵니다.
-                var textBeforeCaret = await Application.Current.Dispatcher.InvokeAsync(() =>
-                    textArea.Document.GetText(0, textArea.Caret.Offset));
-                var currentLine = await Application.Current.Dispatcher.InvokeAsync(() =>
-                    GetCurrentLine(textArea));
-                var currentWord = await Application.Current.Dispatcher.InvokeAsync(() =>
-                    GetCurrentWord(textArea));
-
-                var completionData = await Task.Run(() => GetCompletionData(textBeforeCaret, currentLine, currentWord));
-
-                await Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    if (completionData.Any())
-                    {
-                        ShowCompletionWindow(textArea, completionData);
-                    }
-                    else
-                    {
-                        _completionWindow?.Close();
-                        _completionWindow = null;
-                    }
-                });
-            });
+                ShowCompletionWindow(textArea, completionData);
+            }
+            else
+            {
+                _completionWindow?.Close();
+                _completionWindow = null;
+            }
         }
 
         private List<ICompletionData> GetCompletionData(string textBeforeCaret, string currentLine, string currentWord)
         {
+            
             var completionData = new List<ICompletionData>();
 
             if (currentLine.Contains("--"))
@@ -194,8 +182,8 @@ namespace ActuLight
                 Width = 240, // 너비 고정
                 MaxHeight = 120 // 최대 높이 설정
             };
-            
-            var currentWord = GetCurrentWord(textArea);
+
+            var (_, _, currentWord) = GetCurrentLineInfo(textArea);
             _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
 
             var dataList = _completionWindow.CompletionList.CompletionData;
@@ -226,20 +214,29 @@ namespace ActuLight
             }
         }
 
-        private static string GetCurrentLine(TextArea textArea)
+        private (string CurrentLine, string TextBeforeCaret, string CurrentWord) GetCurrentLineInfo(TextArea textArea)
         {
-            var caretPosition = textArea.Caret.Offset;
-            var currentLine = textArea.Document.GetLineByOffset(caretPosition);
-            return textArea.Document.GetText(currentLine.Offset, currentLine.Length);
-        }
+            var document = textArea.Document;
+            var currentLine = document.GetLineByOffset(textArea.Caret.Offset);
+            var lineStartOffset = currentLine.Offset;
+            var lineEndOffset = currentLine.EndOffset;
+            var caretOffsetInLine = textArea.Caret.Offset - lineStartOffset;
 
-        private static string GetCurrentWord(TextArea textArea)
-        {
-            var caretPosition = textArea.Caret.Offset;
-            var lineStart = textArea.Document.GetLineByOffset(caretPosition).Offset;
-            var text = textArea.Document.GetText(lineStart, caretPosition - lineStart);
-            var match = Regex.Match(text, @"[\w.]+$");
-            return match.Success ? match.Value : string.Empty;
+            // 현재 라인 전체 텍스트
+            string currentLineText = document.GetText(lineStartOffset, currentLine.Length);
+
+            // 캐럿 이전의 텍스트
+            string textBeforeCaret = document.GetText(lineStartOffset, caretOffsetInLine);
+
+            // 현재 단어 (캐럿 이전의 마지막 단어)
+            string currentWord = "";
+            var match = Regex.Match(textBeforeCaret, @"[\w.]+$");
+            if (match.Success)
+            {
+                currentWord = match.Value;
+            }
+
+            return (currentLineText, textBeforeCaret, currentWord);
         }
 
         //Colorize
@@ -788,4 +785,24 @@ namespace ActuLight
             }
         }
     }
+
+    public static class Debouncer
+    {
+        private static readonly ConcurrentDictionary<object, System.Timers.Timer> _timers = new ConcurrentDictionary<object, System.Timers.Timer>();
+
+        public static void Debounce(object key, int delay, Action action)
+        {
+            var timer = _timers.GetOrAdd(key, _ => new System.Timers.Timer(delay));
+            timer.Stop(); // 이전 타이머 중지
+
+            timer.Elapsed += (sender, args) =>
+            {
+                ((System.Timers.Timer)sender).Stop();
+                Application.Current.Dispatcher.Invoke(action);
+            };
+
+            timer.Start();
+        }
+    }
+
 }

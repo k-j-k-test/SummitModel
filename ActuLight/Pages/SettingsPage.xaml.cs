@@ -19,6 +19,7 @@ namespace ActuLight.Pages
             ThemeSelector.SelectedIndex = settings.Theme == "Dark" ? 1 : 0;
             SignificantDigitsSelector.SelectedItem = SignificantDigitsSelector.Items.Cast<ComboBoxItem>()
                 .FirstOrDefault(item => int.Parse((string)item.Content) == settings.SignificantDigits);
+            DataGridSortOptionSelector.SelectedIndex = (int)settings.DataGridSortOption;
         }
 
         private void ThemeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -43,6 +44,21 @@ namespace ActuLight.Pages
                 if (mainWindow.pageCache.TryGetValue("Pages/SpreadsheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
                 {
                     spreadSheetPage.SignificantDigits = App.SettingsManager.CurrentSettings.SignificantDigits;
+                    spreadSheetPage.UpdateInvokes();
+                }
+            }
+        }
+
+        private void DataGridSortOptionSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (DataGridSortOptionSelector.SelectedItem is ComboBoxItem selectedItem)
+            {
+                App.SettingsManager.CurrentSettings.DataGridSortOption = (DataGridSortOption)DataGridSortOptionSelector.SelectedIndex;
+                App.SettingsManager.SaveSettings();
+
+                var mainWindow = (MainWindow)Application.Current.MainWindow;
+                if (mainWindow.pageCache.TryGetValue("Pages/SpreadsheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
+                {
                     spreadSheetPage.UpdateInvokes();
                 }
             }

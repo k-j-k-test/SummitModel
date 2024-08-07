@@ -22,20 +22,18 @@ namespace ActuLight
         private void LoadAndApplySettings()
         {
             SettingsManager.LoadSettings();
+            ApplyTheme();
         }
 
         public static void ApplyTheme()
         {
+            ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
+
             if (SettingsManager.CurrentSettings.Theme == "Dark")
-            {
+            {               
                 ThemeManager.Current.ApplicationTheme = ApplicationTheme.Dark;
             }
-            else
-            {
-                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
-            }
         }
-
     }
 
     public class AppSettingsManager
@@ -50,12 +48,23 @@ namespace ActuLight
             if (File.Exists(SettingsFilePath))
             {
                 string json = File.ReadAllText(SettingsFilePath);
-                CurrentSettings = JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
+                CurrentSettings = JsonConvert.DeserializeObject<AppSettings>(json) ?? CreateDefaultSettings();
             }
             else
             {
-                CurrentSettings = new AppSettings();
+                CurrentSettings = CreateDefaultSettings();
+                SaveSettings(); // 기본 설정을 파일로 저장
             }
+        }
+
+        private AppSettings CreateDefaultSettings()
+        {
+            return new AppSettings
+            {
+                Theme = "Dark",
+                SignificantDigits = 8,
+                DataGridSortOption = DataGridSortOption.Default
+            };
         }
 
         public void SaveSettings()
@@ -69,5 +78,13 @@ namespace ActuLight
     {
         public string Theme { get; set; } = "Light";
         public int SignificantDigits { get; set; } = 8;
+        public DataGridSortOption DataGridSortOption { get; set; } = DataGridSortOption.Default;
+    }
+
+    public enum DataGridSortOption
+    {
+        Default,
+        CellDefinitionOrder,
+        Alphabetical
     }
 }

@@ -112,14 +112,32 @@ namespace ActuLiteModel
 
         public static string TransformText(string input, string modelName)
         {
-            // 정규 표현식 패턴 정의
-            string ifsPattern = @"Ifs\((.+)\)";  // Ifs 함수 패턴
-            string variablePattern = @"((\w+(\{[^}]+\})?)?\.)?(\w+)\[(.*?)\]";  // 변수 및 함수 호출 패턴
-            string functionPattern = @"\b(Sum|Prd)\((.*?)(,.*?)\)";  // Sum 또는 Prd 함수 패턴
-            string functionPattern2 = @"\b(Assum)\((.*?)\)\[(.*?)\]";  // Assum 함수 패턴
+            const int MaxIterations = 10; // 최대 반복 횟수 설정
+            string result = input;
 
-            // 1. Ifs 패턴 변환 (변경 없음)
-            string result = Regex.Replace(input, ifsPattern, match =>
+            for (int i = 0; i < MaxIterations; i++)
+            {
+                string previousResult = result;
+
+                result = TransformIfs(result);
+                result = TransformVariableAndFunctionCalls(result, modelName);
+                result = TransformSumAndPrd(result, modelName);
+                result = TransformAssum(result, modelName);
+
+                // 변경이 없으면 종료
+                if (result == previousResult)
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        private static string TransformIfs(string input)
+        {
+            string ifsPattern = @"Ifs\((.+)\)";
+            return Regex.Replace(input, ifsPattern, match =>
             {
                 string parameters = match.Groups[1].Value;
                 string[] parts = SplitParameters(parameters);
@@ -129,9 +147,12 @@ namespace ActuLiteModel
                 }
                 return BuildNestedIf(parts, 0);
             });
+        }
 
-            // 2. 변수 및 함수 호출 패턴 변환
-            result = Regex.Replace(result, variablePattern, match =>
+        private static string TransformVariableAndFunctionCalls(string input, string modelName)
+        {
+            string variablePattern = @"((\w+(\{[^}]+\})?)?\.)?(\w+)\[(.*?)\]";
+            return Regex.Replace(input, variablePattern, match =>
             {
                 string fullPrefix = match.Groups[1].Value;
                 string prefix = match.Groups[2].Value;
@@ -142,7 +163,7 @@ namespace ActuLiteModel
                 {
                     return $"Eval(\"{modelName}\", \"{functionName}\", {parameter})";
                 }
-                else if (prefix.Contains("{"))  //접두사에 중괄호가 포함될 때
+                else if (prefix.Contains("{"))
                 {
                     var prefixMatch = Regex.Match(prefix, @"(\w+)\{(.+)\}");
                     if (prefixMatch.Success)
@@ -150,7 +171,6 @@ namespace ActuLiteModel
                         string modelPrefix = prefixMatch.Groups[1].Value;
                         string keyValueContent = prefixMatch.Groups[2].Value;
 
-                        // 정규 표현식을 사용하여 키-값 쌍 추출
                         var keyValuePairs = Regex.Matches(keyValueContent, @"(\w+)\s*:\s*((?:[^,]*\(.*?\)|""[^""]*""|[^,])*)");
 
                         string additionalParams = string.Join(", ", keyValuePairs.Cast<Match>().Select(kvp =>
@@ -166,28 +186,43 @@ namespace ActuLiteModel
 
                 return $"Eval(\"{prefix}\", \"{functionName}\", {parameter})";
             });
+        }
 
-            // 3. Sum 또는 Prd 함수 패턴 변환
-            result = Regex.Replace(result, functionPattern, match =>
+        private static string TransformSumAndPrd(string input, string modelName)
+        {
+            string functionPattern = @"\b(Sum|Prd)\(([^,]+),([^,]+),([^,)]+)\)";
+            return Regex.Replace(input, functionPattern, match =>
             {
-                string functionName = match.Groups[1].Value;  // Sum 또는 Prd
-                string firstParameter = match.Groups[2].Value.Trim();  // 첫 번째 매개변수
-                string remainingParameters = match.Groups[3].Value;    // 나머지 매개변수들
+                string functionName = match.Groups[1].Value;
+                string firstParameter = match.Groups[2].Value.Trim();
+                string secondParameter = match.Groups[3].Value.Trim();
+                string thirdParameter = match.Groups[4].Value.Trim();
 
-                return $"{functionName}(\"{modelName}\", \"{firstParameter}\"{remainingParameters})";
+                // 첫 번째 파라미터가 이미 따옴표로 둘러싸여 있는지 확인
+                if (!firstParameter.StartsWith("\"") || !firstParameter.EndsWith("\""))
+                {
+                    // 모델 이름이 이미 포함되어 있지 않은 경우에만 추가
+                    if (!firstParameter.Contains($"\"{modelName}\""))
+                    {
+                        return $"{functionName}(\"{modelName}\", \"{firstParameter}\", {secondParameter}, {thirdParameter})";
+                    }
+                }
+
+                // 이미 변환된 경우 그대로 반환
+                return match.Value;
             });
+        }
 
-            // 4. Assum 함수 패턴 변환
-            result = Regex.Replace(result, functionPattern2, match =>
+        private static string TransformAssum(string input, string modelName)
+        {
+            string assumPattern = @"\bAssum\((.*?)\)\[(.*?)\]";
+            return Regex.Replace(input, assumPattern, match =>
             {
-                string functionName = match.Groups[1].Value;  // Assum
-                string parameter = match.Groups[2].Value.Trim();  // 함수 매개변수
-                string index = match.Groups[3].Value.Trim();  // 함수 매개변수
+                string parameter = match.Groups[1].Value.Trim();
+                string index = match.Groups[2].Value.Trim();
 
-                return $"{functionName}(\"{modelName}\", {index}, {parameter})";
+                return $"Assum(\"{modelName}\", {index}, {parameter})";
             });
-
-            return result;
         }
 
         static string BuildNestedIf(string[] parts, int index)

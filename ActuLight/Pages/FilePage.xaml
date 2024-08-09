@@ -21,8 +21,11 @@
             <CheckBox Content="자동 동기화" x:Name="AutoSyncCheckBox" Checked="AutoSyncCheckBox_Checked" Unchecked="AutoSyncCheckBox_Unchecked" Margin="0,5"/>
         </StackPanel>
 
+
         <!-- Right Panel for Recent Files -->
         <StackPanel Grid.Column="1" Margin="10">
+
+
             <TextBlock Text="Recent Files" FontSize="16" FontWeight="Bold" Margin="0,0,0,10"/>
             <ListBox Name="RecentFilesList" Height="200" SelectionMode="Single">
                 <ListBox.ItemTemplate>
@@ -42,6 +45,17 @@
                 <Button Content="선택한 파일 열기" Click="OpenSelectedFileButton_Click" Margin="0,0,5,0"/>
                 <Button Content="선택한 항목 삭제" Click="DeleteSelectedFileButton_Click" Margin="5,0,0,0"/>
             </StackPanel>
+
+            <!-- Version Info and Update Link -->
+            <StackPanel Margin="0,20,0,0">
+                <TextBlock x:Name="VersionInfoTextBlock"/>
+                <TextBlock x:Name="UpdateLinkTextBlock" Margin="0,5,0,0">
+                    <Hyperlink Click="UpdateLink_Click">
+                        <Run Text="Update to latest version"/>
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
         </StackPanel>
 
         <!-- Status Message -->

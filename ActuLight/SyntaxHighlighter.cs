@@ -29,7 +29,7 @@ namespace ActuLight
         private string _currentModel;
         private string _currentCell;
 
-        private CompletionWindow _completionWindow;
+        private CustomCompletionWindow _completionWindow;
         private readonly TextEditor _textEditor;
 
         private Dictionary<string, HashSet<string>> _modelCells = new Dictionary<string, HashSet<string>>();
@@ -100,7 +100,7 @@ namespace ActuLight
                 {
                     if (_cellCompletions.TryGetValue(parts[0].Trim(), out string completion))
                     {
-                        completionData.Add(new CustomCompletionData(completion, CompletionType.CellCompletion));
+                        completionData.Add(new CustomCompletionData(completion, CompletionType.CellAutoCompletion));
                         return completionData;
                     }
                 }
@@ -133,7 +133,7 @@ namespace ActuLight
                     {
                         completionData.AddRange(cells
                             .Where(cell => cell.StartsWith(cellPrefix, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                            .Select(cell => new CustomCompletionData(cell, CompletionType.CellReference)));
                     }
                 }
                 else
@@ -143,7 +143,7 @@ namespace ActuLight
                     {
                         completionData.AddRange(currentModelCells
                             .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.Cell)));
+                            .Select(cell => new CustomCompletionData(cell, CompletionType.CellReference)));
                     }
 
                     // Add function completions
@@ -173,17 +173,10 @@ namespace ActuLight
                 _completionWindow.Close();
             }
 
-            _completionWindow = new CompletionWindow(textArea)
-            {
-                ResizeMode = ResizeMode.NoResize,
-                CloseWhenCaretAtBeginning = true,
-                CloseAutomatically = true,
-                Opacity = 0, // 시작 시 투명하게 설정
-                Width = 240, // 너비 고정
-                MaxHeight = 120 // 최대 높이 설정
-            };
+            _completionWindow = new CustomCompletionWindow(textArea);
 
-            var (_, _, currentWord) = GetCurrentLineInfo(textArea);
+
+            var (textBeforeCaret, currentLine, currentWord) = GetCurrentLineInfo(textArea);
             _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
 
             var dataList = _completionWindow.CompletionList.CompletionData;
@@ -195,17 +188,8 @@ namespace ActuLight
             if (dataList.Count > 0)
             {
                 _completionWindow.Show();
-                _completionWindow.CompletionList.SelectedItem = dataList[0];
-                _completionWindow.Closed += (sender, args) => _completionWindow = null;
 
-                // 애니메이션 효과 추가
-                var animation = new DoubleAnimation
-                {
-                    From = 0,
-                    To = 1,
-                    Duration = TimeSpan.FromMilliseconds(0)
-                };
-                _completionWindow.BeginAnimation(UIElement.OpacityProperty, animation);
+                _completionWindow.Closed += (sender, args) => _completionWindow = null;
             }
             else
             {
@@ -526,7 +510,7 @@ namespace ActuLight
         public static readonly Regex Cell = new Regex(@"(\w+)({[^}]*})?\.?([\w.]+)?\[");
 
         // Matches cell definitions, including optional description comments
-        // Example: "// Cell description\ncellName -- formula"
+        // Example: "// CellReference description\ncellName -- formula"
         public static readonly Regex CellDefinition = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)");
 
         // Matches Invoke function calls
@@ -578,12 +562,12 @@ namespace ActuLight
 
     public enum CompletionType
     {
-        Cell,
+        CellReference,
         Function,
         Model,
         ContextVariable,
         Assumption,
-        CellCompletion
+        CellAutoCompletion
     }
 
     public class CustomCompletionData : ICompletionData
@@ -606,12 +590,12 @@ namespace ActuLight
             var theme = ThemeManager.Current.ActualApplicationTheme;
             var colorKey = CompletionType switch
             {
-                CompletionType.Cell => "Cell",
+                CompletionType.CellReference => "Cell",
                 CompletionType.Function => "Function",
                 CompletionType.Model => "Model",
                 CompletionType.ContextVariable => "ContextVariable",
                 CompletionType.Assumption => "ContextVariable",
-                CompletionType.CellCompletion => "Cell",
+                CompletionType.CellAutoCompletion => "Cell",
                 _ => "Default"
             };
 
@@ -649,7 +633,7 @@ namespace ActuLight
 
             switch (CompletionType)
             {
-                case CompletionType.Cell:
+                case CompletionType.CellReference:
                     insertText = CompleteCellReference(textBeforeCaret, textAfterCaret);
                     break;
                 case CompletionType.Function:
@@ -661,7 +645,7 @@ namespace ActuLight
                 case CompletionType.Assumption:
                     insertText = Text;
                     break;
-                case CompletionType.CellCompletion:
+                case CompletionType.CellAutoCompletion:
                     insertText = CompleteCellDefinition(lineText);
                     break;
             }
@@ -702,33 +686,15 @@ namespace ActuLight
             var indexMatch = Regex.Match(fullText, @"\[([^\]]*)\]");
             string existingIndex = indexMatch.Success ? $"[{indexMatch.Groups[1].Value}]" : "";
 
-            string result;
+            // {param:value} 패턴이 있는지 확인
+            bool hasParameters = modelPrefix.Contains("{") && modelPrefix.Contains("}");
+
+            string result = hasParameters ? $".{Text}" : $"{modelPrefix}{Text}";
 
             // 캐럿이 '[' 바로 앞에 있는 경우
-            if (textAfterCaret.StartsWith("["))
+            if (!textAfterCaret.StartsWith("["))
             {
-                // 모델 접두사가 있으면 유지하고, 없으면 그대로 진행
-                result = string.IsNullOrEmpty(modelPrefix) ? Text : $"{modelPrefix}{Text}";
-            }
-            // 캐럿이 '[' 앞이 아닌 경우
-            else
-            {
-                // 현재 입력이 비어있거나 완전한 셀 이름이 아닌 경우
-                if (string.IsNullOrEmpty(currentInput) || currentInput != Text)
-                {
-                    result = $"{modelPrefix}{Text}";
-                }
-                // 현재 입력이 이미 완전한 셀 이름인 경우
-                else
-                {
-                    result = $"{modelPrefix}{Text}";
-                }
-
-                // 인덱스가 없는 경우에만 [t] 추가
-                if (string.IsNullOrEmpty(existingIndex))
-                {
-                    result += "[t]";
-                }
+                result += "[t]";
             }
 
             return result;
@@ -774,7 +740,7 @@ namespace ActuLight
 
         private void ReplaceText(TextArea textArea, ISegment completionSegment, string insertText)
         {
-            if (CompletionType == CompletionType.CellCompletion)
+            if (CompletionType == CompletionType.CellAutoCompletion)
             {
                 var currentLine = textArea.Document.GetLineByOffset(completionSegment.Offset);
                 textArea.Document.Replace(currentLine.Offset, currentLine.Length, insertText);
@@ -783,6 +749,162 @@ namespace ActuLight
             {
                 textArea.Document.Replace(completionSegment, insertText);
             }
+        }
+    }
+
+    public class CustomCompletionWindow : CompletionWindow
+    {
+        private bool _isUpdating = false;
+        private Border _mainBorder;
+
+        public CustomCompletionWindow(TextArea textArea) : base(textArea)
+        {
+            this.ResizeMode = ResizeMode.NoResize;
+            this.CloseWhenCaretAtBeginning = true;
+            this.CloseAutomatically = true;
+            this.Width = 240;
+            this.MaxHeight = 120;
+
+            // CompletionList의 필터링 비활성화
+            this.CompletionList.IsFiltering = false;
+            // Window 배경을 투명하게 설정
+            this.AllowsTransparency = true;
+            this.Background = Brushes.Transparent;
+
+            // 메인 Border 생성 및 설정
+            _mainBorder = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                ClipToBounds = true
+            };
+
+            // CompletionList를 _mainBorder의 자식으로 설정
+            if (this.Content is UIElement content)
+            {
+                this.Content = null;
+                _mainBorder.Child = content;
+                this.Content = _mainBorder;
+            }
+
+            // CompletionList의 필터링 비활성화
+            this.CompletionList.IsFiltering = false;
+
+
+            // 키 입력 이벤트 핸들러 추가
+            this.TextArea.TextEntered += TextArea_TextEntered;
+            this.Closed += CustomCompletionWindow_Closed;
+
+            // 테마 변경 이벤트 구독
+            ThemeManager.Current.ActualApplicationThemeChanged += Current_ActualApplicationThemeChanged;
+
+            // 초기 테마 적용
+            ApplyTheme();
+        }
+
+        public new void Show()
+        {
+            this.Opacity = 0;
+            base.Show();
+            UpdateListBox();
+            StartAnimation(0, 1);
+        }
+
+        public new void Close()
+        {
+            StartAnimation(1, 0, () => base.Close());
+        }
+
+        private void StartAnimation(double from, double to, Action completedAction = null)
+        {
+            var animation = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = TimeSpan.FromMilliseconds(200)
+            };
+
+            if (completedAction != null)
+            {
+                animation.Completed += (s, e) => completedAction();
+            }
+
+            this.BeginAnimation(UIElement.OpacityProperty, animation);
+        }
+
+        private void TextArea_TextEntered(object sender, TextCompositionEventArgs e)
+        {
+            if (!_isUpdating)
+            {
+                _isUpdating = true;
+                UpdateListBox();
+                _isUpdating = false;
+            }
+        }
+
+        private void UpdateListBox()
+        {
+            var listBox = this.CompletionList.ListBox;
+            var allItems = this.CompletionList.CompletionData.ToList();
+
+            // 현재 입력된 텍스트로 항목 정렬
+            //var currentText = this.TextArea.Document.GetText(this.StartOffset, this.TextArea.Caret.Offset - this.StartOffset);
+            //var sortedItems = SortItems(allItems, currentText);
+
+            //listBox.ItemsSource = sortedItems;
+
+            if (listBox.Items.Count > 0)
+            {
+                listBox.SelectedIndex = 0;
+            }
+
+            // Force layout update
+            listBox.UpdateLayout();
+            this.UpdateLayout();
+        }
+
+        private List<ICompletionData> SortItems(List<ICompletionData> items, string currentText)
+        {
+            return items
+                .OrderByDescending(item => item.Text.StartsWith(currentText, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(item => item.Text)
+                .ToList();
+        }
+
+        private void CustomCompletionWindow_Closed(object sender, EventArgs e)
+        {
+            this.TextArea.TextEntered -= TextArea_TextEntered;
+            ThemeManager.Current.ActualApplicationThemeChanged -= Current_ActualApplicationThemeChanged;
+        }
+
+        private void ApplyTheme()
+        {
+            var theme = ThemeManager.Current.ActualApplicationTheme;
+
+            if (theme == ApplicationTheme.Dark)
+            {
+                this.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+                this.Foreground = new SolidColorBrush(Colors.White);
+                this.BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60));
+            }
+            else // Light theme
+            {
+                this.Background = new SolidColorBrush(Colors.White);
+                this.Foreground = new SolidColorBrush(Colors.Black);
+                this.BorderBrush = new SolidColorBrush(Color.FromRgb(200, 200, 200));
+            }
+
+            // CompletionList 스타일 업데이트
+            if (this.CompletionList.ListBox != null)
+            {
+                this.CompletionList.ListBox.Background = this.Background;
+                this.CompletionList.ListBox.Foreground = this.Foreground;
+                this.CompletionList.ListBox.BorderBrush = this.BorderBrush;
+            }
+        }
+
+        private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
+        {
+            ApplyTheme();
         }
     }
 

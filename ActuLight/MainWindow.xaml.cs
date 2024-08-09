@@ -25,6 +25,8 @@ namespace ActuLight
         public MainWindow()
         {
             InitializeComponent();
+            UpdateWindowTitle();
+
             MainFrame.Navigating += MainFrame_Navigating;
 
             // Ctrl+S 키 이벤트 핸들러 추가
@@ -167,6 +169,11 @@ namespace ActuLight
                     MessageBox.Show($"Error saving Excel file: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
+        }
+
+        private void UpdateWindowTitle()
+        {
+            this.Title = $"ActuLight {App.CurrentVersion}";
         }
     }
 }

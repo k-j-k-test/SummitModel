@@ -19,6 +19,9 @@ namespace ActuLight.Pages
 {
     public partial class FilePage : Page
     {
+        private string latestVersion;
+        private string downloadUrl;
+
         private const string RecentFilesPath = "recentFiles.json";
         private ObservableCollection<RecentFile> recentFiles = new ObservableCollection<RecentFile>();
         private string currentFilePath;
@@ -35,6 +38,7 @@ namespace ActuLight.Pages
             LoadRecentFiles();
             InitializeFileCheckTimer();
             RecentFilesList.ItemsSource = recentFiles;
+            CheckForUpdates();
         }
 
         private async void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -227,6 +231,8 @@ namespace ActuLight.Pages
             SaveRecentFiles();
         }
 
+
+
         private void SaveRecentFiles()
         {
             var json = JsonConvert.SerializeObject(recentFiles);
@@ -313,6 +319,47 @@ namespace ActuLight.Pages
             Process currentProcess = Process.GetCurrentProcess();
             long memoryUsage = currentProcess.WorkingSet64 / (1024 * 1024); // Convert to MB
             MemoryUsage.Text = $"현재 사용 중인 메모리: {memoryUsage} MB";
+        }
+
+        private async void CheckForUpdates()
+        {
+            try
+            {
+                (latestVersion, downloadUrl) = await VersionChecker.GetLatestVersionInfo();
+                if (latestVersion != null)
+                {
+                    if (VersionChecker.IsUpdateAvailable(App.CurrentVersion, latestVersion))
+                    {
+                        VersionInfoTextBlock.Text = $"Current version: {App.CurrentVersion}, Latest version: {latestVersion}";
+                        UpdateLinkTextBlock.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        VersionInfoTextBlock.Text = $"Current version: {App.CurrentVersion}, Latest version: {latestVersion}";
+                        UpdateLinkTextBlock.Visibility = Visibility.Collapsed;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                VersionInfoTextBlock.Text = $"Failed to check for updates: {ex.Message}";
+            }
+        }
+
+        private async void UpdateLink_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show("Do you want to update to the latest version?", "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    await UpdateHelper.DownloadAndExtractUpdate(downloadUrl);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Update failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
         }
     }
 

@@ -17,10 +17,14 @@
   
   <ItemGroup>
     <None Remove="AutoCompletion.json" />
+    <None Remove="version.json" />
   </ItemGroup>
   
   <ItemGroup>
     <EmbeddedResource Include="AutoCompletion.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="version.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
@@ -32,10 +36,16 @@
     <PackageReference Include="LiveCharts.Wpf" Version="0.9.7" />
     <PackageReference Include="ModernWpfUI" Version="0.9.6" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Octokit" Version="13.0.1" />
   </ItemGroup>
   
   <ItemGroup>
     <ProjectReference Include="..\ActuLiteModel\ActuLiteModel.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
   
   <ItemGroup>
@@ -55,8 +65,12 @@
 
   <Target Name="RemoveLanguageFolders" AfterTargets="Build">
     <ItemGroup>
-      <LanguageFoldersToRemove Include="$(OutputPath)af-ZA;$(OutputPath)am-ET;$(OutputPath)ar-SA;$(OutputPath)az-Latn-AZ;$(OutputPath)be-BY;$(OutputPath)bg-BG;$(OutputPath)bn-BD;$(OutputPath)bs-Latn-BA;$(OutputPath)ca-ES;$(OutputPath)cs-CZ;$(OutputPath)da-DK;$(OutputPath)de-DE;$(OutputPath)el-GR;$(OutputPath)es-ES;$(OutputPath)et-EE;$(OutputPath)eu-ES;$(OutputPath)fa-IR;$(OutputPath)fi-FI;$(OutputPath)fr-FR;$(OutputPath)gl-ES;$(OutputPath)he-IL;$(OutputPath)hi-IN;$(OutputPath)hr-HR;$(OutputPath)hu-HU;$(OutputPath)hy-AM;$(OutputPath)id-ID;$(OutputPath)is-IS;$(OutputPath)it-IT;$(OutputPath)ja-JP;$(OutputPath)ka-GE;$(OutputPath)kk-KZ;$(OutputPath)km-KH;$(OutputPath)kn-IN;$(OutputPath)ko-KR;$(OutputPath)lo-LA;$(OutputPath)lt-LT;$(OutputPath)lv-LV;$(OutputPath)mk-MK;$(OutputPath)ml-IN;$(OutputPath)mn-MN;$(OutputPath)mr-IN;$(OutputPath)ms-MY;$(OutputPath)nb-NO;$(OutputPath)nl-NL;$(OutputPath)pl-PL;$(OutputPath)pt-BR;$(OutputPath)pt-PT;$(OutputPath)ro-RO;$(OutputPath)ru-RU;$(OutputPath)sk-SK;$(OutputPath)sl-SI;$(OutputPath)sq-AL;$(OutputPath)sr-Latn-RS;$(OutputPath)sv-SE;$(OutputPath)sw-KE;$(OutputPath)ta-IN;$(OutputPath)te-IN;$(OutputPath)th-TH;$(OutputPath)tr-TR;$(OutputPath)uk-UA;$(OutputPath)uz-Latn-UZ;$(OutputPath)vi-VN;$(OutputPath)zh-CN;$(OutputPath)zh-TW;$(OutputPath)en-GB;$(OutputPath)es-MX;$(OutputPath)fr-CA;$(OutputPath)nn-NO" />
+      <LanguageFoldersToRemove Include="$(OutputPath)af-ZA;$(OutputPath)am-ET;$(OutputPath)ar-SA;$(OutputPath)az-Latn-AZ;$(OutputPath)be-BY;$(OutputPath)bg-BG;$(OutputPath)bn-BD;$(OutputPath)bs-Latn-BA;$(OutputPath)ca-ES;$(OutputPath)cs-CZ;$(OutputPath)da-DK;$(OutputPath)de-DE;$(OutputPath)el-GR;$(OutputPath)es-ES;$(OutputPath)et-EE;$(OutputPath)eu-ES;$(OutputPath)fa-IR;$(OutputPath)fi-FI;$(OutputPath)fr-FR;$(OutputPath)gl-ES;$(OutputPath)he-IL;$(OutputPath)hi-IN;$(OutputPath)hr-HR;$(OutputPath)hu-HU;$(OutputPath)hy-AM;$(OutputPath)id-ID;$(OutputPath)is-IS;$(OutputPath)it-IT;$(OutputPath)ja-JP;$(OutputPath)ka-GE;$(OutputPath)kk-KZ;$(OutputPath)km-KH;$(OutputPath)kn-IN;$(OutputPath)lo-LA;$(OutputPath)lt-LT;$(OutputPath)lv-LV;$(OutputPath)mk-MK;$(OutputPath)ml-IN;$(OutputPath)mn-MN;$(OutputPath)mr-IN;$(OutputPath)ms-MY;$(OutputPath)nb-NO;$(OutputPath)nl-NL;$(OutputPath)pl-PL;$(OutputPath)pt-BR;$(OutputPath)pt-PT;$(OutputPath)ro-RO;$(OutputPath)ru-RU;$(OutputPath)sk-SK;$(OutputPath)sl-SI;$(OutputPath)sq-AL;$(OutputPath)sr-Latn-RS;$(OutputPath)sv-SE;$(OutputPath)sw-KE;$(OutputPath)ta-IN;$(OutputPath)te-IN;$(OutputPath)th-TH;$(OutputPath)tr-TR;$(OutputPath)uk-UA;$(OutputPath)uz-Latn-UZ;$(OutputPath)vi-VN;$(OutputPath)zh-CN;$(OutputPath)zh-TW;$(OutputPath)en-GB;$(OutputPath)es-MX;$(OutputPath)fr-CA;$(OutputPath)nn-NO;$(OutputPath)ko-KR" />
     </ItemGroup>
     <RemoveDir Directories="@(LanguageFoldersToRemove)" />
+  </Target>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy &quot;$(SolutionDir)UpdateHelper\bin\$(ConfigurationName)\UpdateHelper.exe&quot; &quot;$(TargetDir)&quot; /Y" />
   </Target>
 </Project>

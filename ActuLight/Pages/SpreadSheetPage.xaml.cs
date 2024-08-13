@@ -11,9 +11,7 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.IO;
 using Newtonsoft.Json;
-using System.Windows.Controls.Primitives;
-using System.Threading;
-using System.Collections.Concurrent;
+using ICSharpCode.AvalonEdit.Editing;
 
 namespace ActuLight.Pages
 {
@@ -140,7 +138,7 @@ namespace ActuLight.Pages
 
         private async void ScriptEditor_TextChanged(object sender, EventArgs e)
         {
-            if (ThrottlerAsync.ShouldExecute("ScriptEditor_TextChanged", 300))
+            if (ThrottlerAsync.ShouldExecute("ScriptEditor_TextChanged", 500))
             {
                 await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 500, async () =>
                 {
@@ -165,6 +163,8 @@ namespace ActuLight.Pages
             var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
             var newCellMatches = cellPattern.Matches(text);
 
+
+
             // Check for cell changes
             bool hasCellChanges = cellMatches == null ||
                                   cellMatches.Count != newCellMatches.Count ||
@@ -172,15 +172,33 @@ namespace ActuLight.Pages
                                              .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
                                                        cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
 
+            bool hasCompiledCellChanges = false;
+
             if (hasCellChanges)
-            {
-                cellMatches = newCellMatches;
-                UpdateModelCells();
+            {              
+                UpdateModelCells(newCellMatches);
+
+                // 컴파일된 셀 이름 목록 생성
+                var compiledCellNames = model.CompiledCells.Values
+                    .Where(cell => cell.IsCompiled)
+                    .Select(cell => cell.Name)
+                    .ToHashSet();
+
+                // Check for compiled cell changes
+                hasCompiledCellChanges = cellMatches == null ||
+                                         cellMatches.Count != newCellMatches.Count ||
+                                         !Enumerable.Range(0, cellMatches.Count)
+                                                    .Where(i => compiledCellNames.Contains(cellMatches[i].Groups["cellName"].Value))
+                                                    .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                              cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
                 await Dispatcher.InvokeAsync(() =>
                 {
                     UpdateCellList(selectedModel);
                     UpdateSyntaxHighlighter();
                 });
+
+                cellMatches = newCellMatches;
             }
 
             // Update invokeList
@@ -197,7 +215,7 @@ namespace ActuLight.Pages
                                     invokeList.Count != newInvokeList.Count ||
                                     !invokeList.SequenceEqual(newInvokeList);
 
-            if (hasInvokeChanges || hasCellChanges)
+            if (hasInvokeChanges || hasCompiledCellChanges)
             {
                 invokeList = newInvokeList;
                 await Dispatcher.InvokeAsync(() =>
@@ -292,7 +310,7 @@ namespace ActuLight.Pages
             }
         }
 
-        private void UpdateModelCells()
+        private void UpdateModelCells(MatchCollection matchCollection)
         {
             if (selectedModel == null || !Models.ContainsKey(selectedModel))
             {
@@ -303,7 +321,7 @@ namespace ActuLight.Pages
 
             var newCells = new HashSet<string>();
 
-            foreach (Match match in cellMatches)
+            foreach (Match match in matchCollection)
             {
                 string cellName = match.Groups["cellName"].Value;
                 string description = match.Groups["description"].Value.Trim();
@@ -397,14 +415,14 @@ namespace ActuLight.Pages
                 {
                     if (currentTabs.TryGetValue(sheetPair.Key, out TabItem existingTab))
                     {
-                        AddSheetTab(sheetPair.Key, sheetPair.Value, existingTab);
+                        AddSheetTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value, existingTab);
                         updatedTabs.Add(existingTab);
                         currentTabs.Remove(sheetPair.Key);
                     }
                     else
                     {
                         var newTab = new TabItem();
-                        AddSheetTab(sheetPair.Key, sheetPair.Value, newTab);
+                        AddSheetTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value, newTab);
                         updatedTabs.Add(newTab);
                     }
                 }
@@ -713,5 +731,4 @@ namespace ActuLight.Pages
         }
     }
 
-    
 }

@@ -17,8 +17,8 @@ using ModernWpf;
 using Newtonsoft.Json;
 using System.Threading.Tasks;
 using System.Windows.Media.Animation;
-using System.Security.RightsManagement;
 using System.Collections.Concurrent;
+using ActuLight.Pages;
 
 namespace ActuLight
 {
@@ -64,12 +64,14 @@ namespace ActuLight
                 ["Model"] = (Colors.PaleTurquoise, Colors.MediumTurquoise, Colors.Turquoise),
                 ["Cell"] = (Colors.Plum, Colors.MediumPurple, Colors.Violet),
                 ["ContextVariable"] = (Colors.PaleGreen, Colors.MediumAquamarine, Colors.LightGreen)
-            };
+            };          
         }
 
         //Show AutoCompletion Window
-        private void TextArea_TextEntered(object sender, EventArgs e)
+        public void TextArea_TextEntered(object sender, EventArgs e)
         {
+
+
             if (!(sender is TextEditor textEditor)) return;
 
             var textArea = textEditor.TextArea;
@@ -314,13 +316,33 @@ namespace ActuLight
 
             foreach (Match match in RegexPatterns.Cell.Matches(text))
             {
-                string modelName = match.Groups[1].Value;
-                string parameters = match.Groups[2].Value;
-                string cellName = match.Groups[3].Value;
+                string fullMatch = match.Value;
+                int modelEndIndex = fullMatch.IndexOf('{');
+                if (modelEndIndex == -1) modelEndIndex = fullMatch.IndexOf('.');
+                if (modelEndIndex == -1) modelEndIndex = fullMatch.IndexOf('[');
+
+                string modelName = fullMatch.Substring(0, modelEndIndex);
+                string remaining = fullMatch.Substring(modelEndIndex);
+
+                string parameters = "";
+                string cellName = "";
+
+                if (remaining.StartsWith("{"))
+                {
+                    int paramEndIndex = remaining.IndexOf('}');
+                    parameters = remaining.Substring(0, paramEndIndex + 1);
+                    remaining = remaining.Substring(paramEndIndex + 1);
+                }
+
+                if (remaining.StartsWith("."))
+                {
+                    cellName = remaining.Substring(1, remaining.Length - 2);
+                }
 
                 int modelStartIndex = match.Index;
                 int modelLength = modelName.Length + parameters.Length;
 
+                // 여기서부터는 기존 로직과 동일
                 if (string.IsNullOrEmpty(cellName)) // 현재 모델의 셀 참조
                 {
                     cellName = modelName;
@@ -476,7 +498,7 @@ namespace ActuLight
                 _cellCompletions = autoCompletionSet.CellCompletions;
             }
         }
-
+        
         private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
         {
             _textEditor.TextArea.TextView.Redraw();
@@ -507,11 +529,11 @@ namespace ActuLight
 
         // Matches cell references, optionally with model name and parameters
         // Examples: "cellName[", "modelName.cellName[", "modelName{param1:value,param2:value}.cellName["
-        public static readonly Regex Cell = new Regex(@"(\w+)({[^}]*})?\.?([\w.]+)?\[");
+        public static readonly Regex Cell = new Regex(@"\b\w+(?:{[^{}]*})?(?:\.\w+)?\[", RegexOptions.Compiled);
 
         // Matches cell definitions, including optional description comments
         // Example: "// CellReference description\ncellName -- formula"
-        public static readonly Regex CellDefinition = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)");
+        public static readonly Regex CellDefinition = new Regex(@"(?://(?<description>.*)\r?\n)?(?<cellName>\w+)\s*--\s*(?<formula>.+)(\r?\n|$)", RegexOptions.Compiled);
 
         // Matches Invoke function calls
         // Example: "Invoke(cellName, 0)"
@@ -662,8 +684,12 @@ namespace ActuLight
                 else
                 {
                     textArea.Caret.Offset -= 1;
-                }
+                }               
             }
+
+            textArea.Caret.Offset -= lineText.Length;
+            textArea.Caret.Offset += lineText.Length;
+
         }
 
         private string GetCurrentLineText(TextArea textArea, ISegment completionSegment)
@@ -846,12 +872,6 @@ namespace ActuLight
             var listBox = this.CompletionList.ListBox;
             var allItems = this.CompletionList.CompletionData.ToList();
 
-            // 현재 입력된 텍스트로 항목 정렬
-            //var currentText = this.TextArea.Document.GetText(this.StartOffset, this.TextArea.Caret.Offset - this.StartOffset);
-            //var sortedItems = SortItems(allItems, currentText);
-
-            //listBox.ItemsSource = sortedItems;
-
             if (listBox.Items.Count > 0)
             {
                 listBox.SelectedIndex = 0;
@@ -860,14 +880,6 @@ namespace ActuLight
             // Force layout update
             listBox.UpdateLayout();
             this.UpdateLayout();
-        }
-
-        private List<ICompletionData> SortItems(List<ICompletionData> items, string currentText)
-        {
-            return items
-                .OrderByDescending(item => item.Text.StartsWith(currentText, StringComparison.OrdinalIgnoreCase))
-                .ThenBy(item => item.Text)
-                .ToList();
         }
 
         private void CustomCompletionWindow_Closed(object sender, EventArgs e)

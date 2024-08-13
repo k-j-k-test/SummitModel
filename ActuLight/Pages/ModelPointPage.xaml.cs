@@ -67,7 +67,8 @@ namespace ActuLight.Pages
                             UpdateSelectedDataDisplay();
 
                             // ModelEngine의 SetModelPoint 실행
-                            App.ModelEngine.SetModelPoint(headers, SelectedData);
+                            App.ModelEngine.SelectedPoint = headers.Zip(SelectedData, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+                            App.ModelEngine.SetModelPoint();
                         }
                     }
                 }
@@ -195,7 +196,8 @@ namespace ActuLight.Pages
             UpdateSelectedDataDisplay();
 
             // ModelEngine의 SetModelPoint 실행
-            App.ModelEngine.SetModelPoint(headers, SelectedData);
+            App.ModelEngine.SelectedPoint = headers.Zip(SelectedData, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+            App.ModelEngine.SetModelPoint();
 
             MessageBox.Show("선택된 데이터가 업데이트되었습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
 

@@ -54,6 +54,8 @@ namespace ActuLiteModel
         {
             try
             {
+                Engine.SetModelPoint();
+
                 AddSheet(Name);
                 t = Math.Min(t, Sheet.MaxT);
                 Engine.Context.Variables["t"] = t;
@@ -78,12 +80,6 @@ namespace ActuLiteModel
                 }
 
                 sheet[cellName, t] = result;
-
-                foreach(var sh in Sheets)
-                {
-                    // 셀 정렬 순서변경
-                    //sh.Value.ChangeCacheOrder(Sheet.SortOption.FirstCalculationTime);
-                }
                 
             }
             catch (CircularReferenceException ex)
@@ -124,6 +120,7 @@ namespace ActuLiteModel
     {
         public string Name { get; set; }
         public string Formula { get; set; }
+        public string TransformedFormula { get; set; }
         public string Description { get; set; }
         public Model Model { get; set; }
         public IGenericExpression<double> Expression { get; set; }
@@ -145,8 +142,8 @@ namespace ActuLiteModel
         {
             try
             {
-                string transFormedFormula = ModelEngine.TransformText(Formula, Model.Name);
-                Expression = Model.Engine.Context.CompileGeneric<double>(transFormedFormula);
+                TransformedFormula = ModelEngine.TransformText(Formula, Model.Name);
+                Expression = Model.Engine.Context.CompileGeneric<double>(TransformedFormula);
                 CellFunc = t => Expression.Evaluate();
                 IsCompiled = true;
                 CompileStatusMessage = "Successfully Compiled";

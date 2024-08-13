@@ -15,7 +15,7 @@ namespace ActuLiteModel
 {
     public class ModelEngine
     {
-        public ExpressionContext Context { get; private set; }
+        public KoreanExpressionContext Context { get; private set; }
 
         public Dictionary<string, List<Input_assum>> Assumptions { get; private set; }
 
@@ -23,9 +23,11 @@ namespace ActuLiteModel
 
         public Dictionary<string, Model> Models { get; private set; }
 
+        public Dictionary<string, object> SelectedPoint { get;  set; }
+
         public ModelEngine()
         {
-            Context = new ExpressionContext();
+            Context = new KoreanExpressionContext();
             Context.Imports.AddType(typeof(FleeFunc));
             Assumptions = new Dictionary<string, List<Input_assum>>();
             Conditions = new Dictionary<string, IGenericExpression<bool>>();
@@ -33,13 +35,13 @@ namespace ActuLiteModel
             FleeFunc.ModelDict = Models;
         }
 
-        public void SetModelPoint(List<string> keys, List<object> mp)
+        public void SetModelPoint()
         {
             Context.Variables["t"] = 0;
 
-            for (int i = 0; i < keys.Count; i++)
+            foreach(var point in SelectedPoint)
             {
-                Context.Variables[keys[i]] = mp[i];
+                Context.Variables[point.Key] = point.Value;
             }
         }
 

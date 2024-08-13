@@ -58,15 +58,13 @@ namespace ActuLiteModel
             return Enumerable.Range(_start, _end - _start + 1).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
         }
 
-        public static double Max(params object[] vals)
-        {
-            return vals.Select(x => Convert.ToDouble(x)).Max();
-        }
+        public static double Max(params double[] vals) => vals.Max();
 
-        public static double Min(params object[] vals)
-        {
-            return vals.Select(x => Convert.ToDouble(x)).Min();
-        }
+        public static double Min(params double[] vals) => vals.Min();
+
+        public static int Max(params int[] vals) => vals.Max();
+
+        public static int Min(params int[] vals) => vals.Min();
 
         public static double Ifs(params object[] vals)
         {
@@ -147,6 +145,15 @@ namespace ActuLiteModel
         {
             // 모델 및 파라미터 설정
             Model model = ModelDict[modelName];
+
+            for (int i = 0; i < kvpairs.Length; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    kvpairs[i] = model.Engine.Context.GetOriginalVariableName(kvpairs[i].ToString());
+                }
+            }
+
             Parameter additionalParameter = Parameter.FromKeyValuePairs(kvpairs);
             Parameter modelParameter = model.Parameter;
             modelParameter.Add(additionalParameter);
@@ -176,14 +183,17 @@ namespace ActuLiteModel
         // 모델의 초기 상태를 저장하는 메서드
         private static Dictionary<string, object> SaveInitialState(Model model, Parameter additionalParameter)
         {
-            var initialState = new Dictionary<string, object>
+           var initialState = new Dictionary<string, object>
             {
                 ["t"] = model.Engine.Context.Variables["t"]
             };
 
             foreach (string key in additionalParameter.Keys)
             {
-                initialState[key] = model.Engine.Context.Variables[key];
+                if (model.Engine.Context.Variables.Keys.Contains(key))
+                {
+                    initialState[key] = model.Engine.Context.Variables[key];
+                }          
             }
 
             return initialState;
@@ -196,7 +206,14 @@ namespace ActuLiteModel
 
             foreach (string key in additionalParameter.Keys)
             {
-                SetVariableValue(model.Engine.Context.Variables, key, modelParameter[key]);
+                if (model.Engine.Context.Variables.Keys.Contains(key))
+                {
+                    SetVariableValue(model.Engine.Context.Variables, key, modelParameter[key]);
+                }
+                else
+                {
+                    throw new Exception($"미확인 파라미터 오류: {key}");
+                }
             }
         }
 
@@ -209,10 +226,9 @@ namespace ActuLiteModel
             }
         }
 
-        // 변수 값을 설정하는 메서드 (Input_mp 속성 기반 타입 변환)
         private static void SetVariableValue(IDictionary<string, object> variables, string key, object value)
-        {
-            variables[key] = value;
+        {           
+            variables[key] = Convert.ChangeType(value, variables[key].GetType());
         }
 
         private static double GetAssumptionValue(string modelName, int t, string[] assumptionKeys)

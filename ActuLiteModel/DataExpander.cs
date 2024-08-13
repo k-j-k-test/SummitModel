@@ -9,7 +9,7 @@ namespace ActuLiteModel
     {
         private readonly Type[] types;
         private readonly string[] keys;
-        private readonly ExpressionContext context;
+        private readonly KoreanExpressionContext context;
         private readonly Dictionary<string, IGenericExpression<object>> compiledExpressions;
 
         public DataExpander(IEnumerable<object> typeNames, IEnumerable<object> keys)
@@ -26,7 +26,7 @@ namespace ActuLiteModel
             this.types = ConvertToTypes(typeNameArray);
             this.keys = keyArray;
 
-            context = new ExpressionContext();
+            context = new KoreanExpressionContext();
             context.Imports.AddType(typeof(FleeFunc));
             compiledExpressions = new Dictionary<string, IGenericExpression<object>>();
             InitializeContextVariables();

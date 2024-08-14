@@ -4,7 +4,10 @@
     "Sum",
     "Prd",
     "Assum",
-    "If"
+    "If",
+    "Ifs",
+    "Min",
+    "Max"
   ],
   "CellCompletions": {
     "q1": "Assum(\"mort\")",

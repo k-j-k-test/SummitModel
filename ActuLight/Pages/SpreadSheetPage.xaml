@@ -74,8 +74,10 @@
 
                 <!-- 상단 버튼 및 텍스트박스 패널 -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
-                    <Button Content="모델 추가" Click="AddModel_Click" Margin="0,0,5,0"/>
                     <TextBox x:Name="NewModelTextBox" Width="150" Margin="0,0,5,0"/>
+                    <Button Content="모델 추가" Click="AddModel_Click" Margin="0,0,5,0"/>
+                    <Button x:Name="MoveModelUpButton" Content="▲" Click="MoveModelUp_Click" Width="30" Margin="0,0,5,0"/>
+                    <Button x:Name="MoveModelDownButton" Content="▼" Click="MoveModelDown_Click" Width="30" Margin="0,0,5,0"/>
                 </StackPanel>
 
                 <!-- 모델 및 셀 리스트 -->

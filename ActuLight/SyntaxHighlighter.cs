@@ -17,8 +17,7 @@ using ModernWpf;
 using Newtonsoft.Json;
 using System.Threading.Tasks;
 using System.Windows.Media.Animation;
-using System.Collections.Concurrent;
-using ActuLight.Pages;
+using System.Windows.Documents;
 
 namespace ActuLight
 {
@@ -64,14 +63,12 @@ namespace ActuLight
                 ["Model"] = (Colors.PaleTurquoise, Colors.MediumTurquoise, Colors.Turquoise),
                 ["Cell"] = (Colors.Plum, Colors.MediumPurple, Colors.Violet),
                 ["ContextVariable"] = (Colors.PaleGreen, Colors.MediumAquamarine, Colors.LightGreen)
-            };          
+            };
         }
 
         //Show AutoCompletion Window
         public void TextArea_TextEntered(object sender, EventArgs e)
         {
-
-
             if (!(sender is TextEditor textEditor)) return;
 
             var textArea = textEditor.TextArea;
@@ -90,10 +87,9 @@ namespace ActuLight
             }
         }
 
-        private List<ICompletionData> GetCompletionData(string textBeforeCaret, string currentLine, string currentWord)
+        private List<CustomCompletionData> GetCompletionData(string textBeforeCaret, string currentLine, string currentWord)
         {
-            
-            var completionData = new List<ICompletionData>();
+             var completionData = new List<CustomCompletionData>();
 
             if (currentLine.Contains("--"))
             {
@@ -102,8 +98,7 @@ namespace ActuLight
                 {
                     if (_cellCompletions.TryGetValue(parts[0].Trim(), out string completion))
                     {
-                        completionData.Add(new CustomCompletionData(completion, CompletionType.CellAutoCompletion));
-                        return completionData;
+                        completionData.Add(new CustomCompletionData(completion, CompletionType.CellAutoCompletion, parts[0]));
                     }
                 }
             }
@@ -118,9 +113,7 @@ namespace ActuLight
             if (assumMatch.Success)
             {
                 // We're inside Assum function, offer assumption completions
-                completionData.AddRange(_assumptions
-                    .Where(assum => assum.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                    .Select(assumption => new CustomCompletionData(assumption, CompletionType.Assumption)));
+                completionData.AddRange(GetFilteredCompletionData(_assumptions, currentWord, CompletionType.Assumption));
             }
             else
             {
@@ -133,9 +126,7 @@ namespace ActuLight
                     string cellPrefix = modelMatch.Groups[3].Value;
                     if (_modelCells.TryGetValue(modelName, out var cells))
                     {
-                        completionData.AddRange(cells
-                            .Where(cell => cell.StartsWith(cellPrefix, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.CellReference)));
+                        completionData.AddRange(GetFilteredCompletionData(cells, cellPrefix, CompletionType.CellReference));
                     }
                 }
                 else
@@ -143,29 +134,32 @@ namespace ActuLight
                     // Add cell completions
                     if (!string.IsNullOrEmpty(_currentModel) && _modelCells.TryGetValue(_currentModel, out var currentModelCells))
                     {
-                        completionData.AddRange(currentModelCells
-                            .Where(cell => cell.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                            .Select(cell => new CustomCompletionData(cell, CompletionType.CellReference)));
+                        completionData.AddRange(GetFilteredCompletionData(currentModelCells, currentWord, CompletionType.CellReference));
                     }
 
                     // Add function completions
-                    completionData.AddRange(_functions
-                        .Where(func => func.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(func => new CustomCompletionData(func, CompletionType.Function)));
+                    completionData.AddRange(GetFilteredCompletionData(_functions, currentWord, CompletionType.Function));
 
                     // Add model completions
-                    completionData.AddRange(_models
-                        .Where(model => model.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(model => new CustomCompletionData(model, CompletionType.Model)));
+                    completionData.AddRange(GetFilteredCompletionData(_models, currentWord, CompletionType.Model));
 
                     // Add context variable completions
-                    completionData.AddRange(_contextVariables
-                        .Where(var => var.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase))
-                        .Select(var => new CustomCompletionData(var, CompletionType.ContextVariable)));
+                    completionData.AddRange(GetFilteredCompletionData(_contextVariables, currentWord, CompletionType.ContextVariable));
                 }
             }
 
-            return completionData;
+            return completionData.OrderBy(item => item.Text.StartsWith(currentWord, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(item => item.Text).ToList();
+        }
+
+        private List<CustomCompletionData> GetFilteredCompletionData(IEnumerable<string> items, string filter, CompletionType type)
+        {
+            var filteredItems = items
+                .Where(item => item.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                .Take(10)
+                .Select(item => new CustomCompletionData(item, type, filter))
+                .ToList();
+
+            return filteredItems;
         }
 
         private void ShowCompletionWindow(TextArea textArea, IEnumerable<ICompletionData> completionData)
@@ -177,11 +171,20 @@ namespace ActuLight
 
             _completionWindow = new CustomCompletionWindow(textArea);
 
-
             var (textBeforeCaret, currentLine, currentWord) = GetCurrentLineInfo(textArea);
-            _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
 
             var dataList = _completionWindow.CompletionList.CompletionData;
+
+            if (Regex.Match(currentLine, @"(\w+)\s*--\s*$").Success)
+            {
+                _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length - 1;
+            }
+            else
+            {
+                _completionWindow.StartOffset = textArea.Caret.Offset - currentWord.Length;
+            }
+
+
             foreach (var data in completionData)
             {
                 dataList.Add(data);
@@ -584,6 +587,7 @@ namespace ActuLight
 
     public enum CompletionType
     {
+        None,
         CellReference,
         Function,
         Model,
@@ -594,18 +598,21 @@ namespace ActuLight
 
     public class CustomCompletionData : ICompletionData
     {
-        public CustomCompletionData(string text, CompletionType type)
+        public CustomCompletionData(string text, CompletionType type, string highlightText)
         {
             Text = text;
             CompletionType = type;
+            HighlightText = highlightText;
         }
 
         public ImageSource Image => null;
         public string Text { get; }
+        public string HighlightText { get; }
         public CompletionType CompletionType { get; }
         public object Content => CreateTextBlock();
         public object Description => null;
         public double Priority => 0;
+
 
         private TextBlock CreateTextBlock()
         {
@@ -623,12 +630,43 @@ namespace ActuLight
 
             var color = GetThemeColor(colorKey, theme);
 
-            return new TextBlock
+            var textBlock = new TextBlock
             {
-                Text = Text,
-                Foreground = new SolidColorBrush(color),
                 FontSize = 11
             };
+
+            // 입력된 부분을 찾아 볼드 처리
+            string inputText = HighlightText;
+            if (!string.IsNullOrEmpty(inputText))
+            {
+                int index = Text.IndexOf(inputText, StringComparison.OrdinalIgnoreCase);
+                if (index >= 0)
+                {
+                    if (index > 0)
+                        textBlock.Inlines.Add(new Run(Text.Substring(0, index)) { Foreground = new SolidColorBrush(color) });
+
+                    textBlock.Inlines.Add(new Run(Text.Substring(index, inputText.Length))
+                    {
+                        Foreground = new SolidColorBrush(color),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12, // 폰트 크기를 키움
+                        FontFamily = new FontFamily("Segoe UI") // 폰트 변경
+                    });
+
+                    if (index + inputText.Length < Text.Length)
+                        textBlock.Inlines.Add(new Run(Text.Substring(index + inputText.Length)) { Foreground = new SolidColorBrush(color) });
+                }
+                else
+                {
+                    textBlock.Inlines.Add(new Run(Text) { Foreground = new SolidColorBrush(color) });
+                }
+            }
+            else
+            {
+                textBlock.Inlines.Add(new Run(Text) { Foreground = new SolidColorBrush(color) });
+            }
+
+            return textBlock;
         }
 
         private Color GetThemeColor(string colorKey, ApplicationTheme theme)
@@ -687,8 +725,12 @@ namespace ActuLight
                 }               
             }
 
-            textArea.Caret.Offset -= lineText.Length;
-            textArea.Caret.Offset += lineText.Length;
+            if (CompletionType == CompletionType.ContextVariable || CompletionType == CompletionType.Assumption)
+            {
+                //캐럿 초기화로 자동완성창 다시실행 차단
+                textArea.Caret.Offset -= lineText.Length;
+                textArea.Caret.Offset += lineText.Length;
+            }
 
         }
 
@@ -917,25 +959,6 @@ namespace ActuLight
         private void Current_ActualApplicationThemeChanged(ThemeManager sender, object args)
         {
             ApplyTheme();
-        }
-    }
-
-    public static class Debouncer
-    {
-        private static readonly ConcurrentDictionary<object, System.Timers.Timer> _timers = new ConcurrentDictionary<object, System.Timers.Timer>();
-
-        public static void Debounce(object key, int delay, Action action)
-        {
-            var timer = _timers.GetOrAdd(key, _ => new System.Timers.Timer(delay));
-            timer.Stop(); // 이전 타이머 중지
-
-            timer.Elapsed += (sender, args) =>
-            {
-                ((System.Timers.Timer)sender).Stop();
-                Application.Current.Dispatcher.Invoke(action);
-            };
-
-            timer.Start();
         }
     }
 

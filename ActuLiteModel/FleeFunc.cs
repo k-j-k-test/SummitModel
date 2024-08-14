@@ -13,25 +13,27 @@ namespace ActuLiteModel
 
         public static Dictionary<string, Model> SubModelDict = new Dictionary<string, Model>();
 
+        public static double epsilon = 0.0000001;
+
         public static double Eval(string modelName, string var, double t)
         {
-            return GetCellValue(modelName, var, ToInt(t));
+            return GetCellValue(modelName, var, (int)(t + epsilon));
         }
 
         public static double Eval(string modelName, string var, double t, params object[] kvpairs)
         {
-            return GetCellValue(modelName, var, ToInt(t), kvpairs);
+            return GetCellValue(modelName, var, (int)(t + epsilon), kvpairs);
         }
 
         public static double Assum(string modelName, double t, params object[] assumptionKeys)
         {
-           return GetAssumptionValue(modelName, Math.Min(ToInt(t), Sheet.MaxT), assumptionKeys.Select(x => x.ToString()).ToArray());
+           return GetAssumptionValue(modelName, Math.Min((int)(t + epsilon), Sheet.MaxT), assumptionKeys.Select(x => x.ToString()).ToArray());
         }
 
         public static double Sum(string modelName, string var, double start, double end)
         {
-            int _start = ToInt(start);
-            int _end = ToInt(end);
+            int _start = (int)(start + epsilon);
+            int _end = (int)(end + epsilon);
 
             if (start > end) return 0;
 
@@ -45,8 +47,8 @@ namespace ActuLiteModel
 
         public static double Prd(string modelName, string var, double start, double end)
         {
-            int _start = ToInt(start);
-            int _end = ToInt(end);
+            int _start = (int)(start + epsilon);
+            int _end = (int)(end + epsilon);
 
             if (start > end) return 0;
 
@@ -278,13 +280,6 @@ namespace ActuLiteModel
             // 기준일 (예: 1900년 1월 1일)로부터의 경과 일수를 날짜로 변환
             DateTime baseDate = new DateTime(1900, 1, 1);
             return baseDate.AddDays(doubleRepresentation);
-        }
-
-        private static int ToInt(double value)
-        {
-            double epsilon = 0.0000001;
-
-            return (int)Math.Floor(value + epsilon);
         }
     }
 }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Web.Caching;
 using Flee.PublicTypes;
 using System.Windows;
+using System.Threading;
 
 namespace ActuLiteModel
 {
@@ -48,7 +49,7 @@ namespace ActuLiteModel
         }
 
         // 매우 큰 값의 임계점을 정의
-        private const double MaxAllowedValue = 99999999999999;
+        private const double MaxAllowedValue = 99999999999;
 
         public void Invoke(string cellName, int t)
         {
@@ -80,23 +81,11 @@ namespace ActuLiteModel
                 }
 
                 sheet[cellName, t] = result;
-                
-            }
-            catch (CircularReferenceException ex)
-            {
-                throw new CircularReferenceException($"순환 참조 감지: 셀 {cellName}, t={t}. 경로: {ex.Message}");
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                throw new ArgumentOutOfRangeException($"범위 초과 오류: 셀 {cellName}, t={t}. 오류: {ex.Message}", ex);
-            }
-            catch (OverflowException)
-            {
-                throw;
+
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"예상치 못한 오류 발생: 셀 {cellName}, t={t}. 오류: {ex.Message}", ex);
+                throw new InvalidOperationException(ex.Message);
             }
         }
 
@@ -105,6 +94,7 @@ namespace ActuLiteModel
             Parameter = new Parameter();
             Sheets = new Dictionary<string, Sheet>();
         }
+
     }
 
     public class BaseModel

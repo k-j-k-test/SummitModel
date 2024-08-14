@@ -11,7 +11,6 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.IO;
 using Newtonsoft.Json;
-using ICSharpCode.AvalonEdit.Editing;
 
 namespace ActuLight.Pages
 {
@@ -44,6 +43,8 @@ namespace ActuLight.Pages
 
             // Ctrl+S 키 이벤트 처리를 위한 핸들러 추가
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
+
+            ModelsList.MouseRightButtonUp += ModelsList_MouseRightButtonUp;
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
@@ -114,11 +115,9 @@ namespace ActuLight.Pages
                 {
                     Scripts[selectedModel] = ScriptEditor.Text;
                 }
-                UpdateCellList(selectedItem);
+                
                 ScriptEditor.Text = Scripts.TryGetValue(selectedItem, out string script) ? script : "";
                 selectedModel = selectedItem;
-
-                UpdateSyntaxHighlighter();
             }
         }
 
@@ -138,9 +137,9 @@ namespace ActuLight.Pages
 
         private async void ScriptEditor_TextChanged(object sender, EventArgs e)
         {
-            if (ThrottlerAsync.ShouldExecute("ScriptEditor_TextChanged", 500))
+            if (ThrottlerAsync.ShouldExecute("ScriptEditor_TextChanged", 300))
             {
-                await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 500, async () =>
+                await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 300, async () =>
                 {
                     await ProcessTextChangeInternal(ScriptEditor.Text);
                 });
@@ -151,79 +150,85 @@ namespace ActuLight.Pages
         {
             // 여기에 기존의 ProcessTextChangeInternal 내용을 유지합니다.
             // UI 관련 작업은 Dispatcher.Invoke를 사용합니다.
-
-            if (selectedModel == null || !Models.ContainsKey(selectedModel))
+            try
             {
-                return;
-            }
-
-            Model model = Models[selectedModel];
-
-            // Update cellMatches
-            var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
-            var newCellMatches = cellPattern.Matches(text);
-
-
-
-            // Check for cell changes
-            bool hasCellChanges = cellMatches == null ||
-                                  cellMatches.Count != newCellMatches.Count ||
-                                  !Enumerable.Range(0, cellMatches.Count)
-                                             .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                       cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
-
-            bool hasCompiledCellChanges = false;
-
-            if (hasCellChanges)
-            {              
-                UpdateModelCells(newCellMatches);
-
-                // 컴파일된 셀 이름 목록 생성
-                var compiledCellNames = model.CompiledCells.Values
-                    .Where(cell => cell.IsCompiled)
-                    .Select(cell => cell.Name)
-                    .ToHashSet();
-
-                // Check for compiled cell changes
-                hasCompiledCellChanges = cellMatches == null ||
-                                         cellMatches.Count != newCellMatches.Count ||
-                                         !Enumerable.Range(0, cellMatches.Count)
-                                                    .Where(i => compiledCellNames.Contains(cellMatches[i].Groups["cellName"].Value))
-                                                    .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                              cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
-
-                await Dispatcher.InvokeAsync(() =>
+                if (selectedModel == null || !Models.ContainsKey(selectedModel))
                 {
-                    UpdateCellList(selectedModel);
-                    UpdateSyntaxHighlighter();
-                });
+                    return;
+                }
 
-                cellMatches = newCellMatches;
+                Model model = Models[selectedModel];
+
+                // Update cellMatches
+                var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
+                var newCellMatches = cellPattern.Matches(text);
+
+
+
+                // Check for cell changes
+                bool hasCellChanges = cellMatches == null ||
+                                      cellMatches.Count != newCellMatches.Count ||
+                                      !Enumerable.Range(0, cellMatches.Count)
+                                                 .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                           cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+                bool hasCompiledCellChanges = false;
+
+                if (hasCellChanges)
+                {
+                    // 컴파일된 셀 이름 목록 생성
+                    var compiledCellNames = model.CompiledCells.Values
+                        .Where(cell => cell.IsCompiled)
+                        .Select(cell => cell.Name)
+                        .ToHashSet();
+
+                    // Check for compiled cell changes
+                    hasCompiledCellChanges = cellMatches == null ||
+                                             cellMatches.Count != newCellMatches.Count ||
+                                             !Enumerable.Range(0, cellMatches.Count)
+                                                        .Where(i => compiledCellNames.Contains(cellMatches[i].Groups["cellName"].Value))
+                                                        .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                                  cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+                    cellMatches = newCellMatches;
+
+                    UpdateModelCells(newCellMatches);
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateCellList(selectedModel);
+                        UpdateSyntaxHighlighter();
+                    });
+
+                }
+
+                // Update invokeList
+                var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
+                var newInvokeMatches = invokePattern.Matches(text);
+
+                var newInvokeList = newInvokeMatches
+                    .Cast<Match>()
+                    .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
+                    .ToList();
+
+                // Check for Invoke changes
+                bool hasInvokeChanges = invokeList == null ||
+                                        invokeList.Count != newInvokeList.Count ||
+                                        !invokeList.SequenceEqual(newInvokeList);
+
+                if (hasInvokeChanges || hasCompiledCellChanges)
+                {
+                    invokeList = newInvokeList;
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateInvokes();
+                        SortSheets();
+                        UpdateSheets();
+                    });
+                }
             }
-
-            // Update invokeList
-            var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
-            var newInvokeMatches = invokePattern.Matches(text);
-
-            var newInvokeList = newInvokeMatches
-                .Cast<Match>()
-                .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
-                .ToList();
-
-            // Check for Invoke changes
-            bool hasInvokeChanges = invokeList == null ||
-                                    invokeList.Count != newInvokeList.Count ||
-                                    !invokeList.SequenceEqual(newInvokeList);
-
-            if (hasInvokeChanges || hasCompiledCellChanges)
+            catch(Exception ex) 
             {
-                invokeList = newInvokeList;
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    UpdateInvokes();
-                    SortSheets();
-                    UpdateSheets();
-                });
+                throw new Exception(ex.Message);
             }
         }
 
@@ -244,22 +249,6 @@ namespace ActuLight.Pages
                 NewModelTextBox.Text = "";
                 ModelsList.SelectedItem = newModelName;
                 UpdateCellList(newModelName);
-            }
-        }
-
-        private void DeleteModel_Click(object sender, RoutedEventArgs e)
-        {
-            if (ModelsList.SelectedItem is string selectedModel)
-            {
-                Models.Remove(selectedModel);
-                Scripts.Remove(selectedModel);
-
-                var modelsList = (List<string>)ModelsList.ItemsSource;
-                modelsList.Remove(selectedModel);
-                ModelsList.ItemsSource = null;
-                ModelsList.ItemsSource = modelsList;
-
-                ScriptEditor.Text = "";
             }
         }
 
@@ -669,6 +658,136 @@ namespace ActuLight.Pages
                 MessageBox.Show($"Excel 파일 생성 또는 열기 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+        private void ModelsList_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            var listBoxItem = (e.OriginalSource as FrameworkElement)?.DataContext as string;
+            if (listBoxItem != null)
+            {
+                ModelsList.SelectedItem = listBoxItem;
+                ShowModelContextMenu(listBoxItem);
+            }
+        }
+
+        private void ShowModelContextMenu(string modelName)
+        {
+            var contextMenu = new ContextMenu();
+
+            var deleteMenuItem = new MenuItem { Header = "모델 삭제" };
+            deleteMenuItem.Click += (sender, e) => DeleteModel(modelName);
+            contextMenu.Items.Add(deleteMenuItem);
+
+            var renameMenuItem = new MenuItem { Header = "모델 이름 변경" };
+            renameMenuItem.Click += (sender, e) => RenameModel(modelName);
+            contextMenu.Items.Add(renameMenuItem);
+
+            contextMenu.IsOpen = true;
+        }
+
+        private void DeleteModel(string modelName)
+        {
+            var result = MessageBox.Show($"정말로 '{modelName}' 모델을 삭제하시겠습니까?", "모델 삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                Models.Remove(modelName);
+                Scripts.Remove(modelName);
+
+                var modelsList = ModelsList.ItemsSource as List<string>;
+                modelsList.Remove(modelName);
+                ModelsList.ItemsSource = null;
+                ModelsList.ItemsSource = modelsList;
+
+                ScriptEditor.Text = "";
+                CellsList.ItemsSource = null;
+                UpdateSyntaxHighlighter();
+            }
+        }
+
+        private void RenameModel(string oldModelName)
+        {
+            var dialog = new InputDialog("모델 이름 변경", "새 모델 이름을 입력하세요:", oldModelName);
+            if (dialog.ShowDialog() == true)
+            {
+                string newModelName = dialog.Answer;
+
+                if (!string.IsNullOrWhiteSpace(newModelName) && !Models.ContainsKey(newModelName))
+                {
+                    // Models 딕셔너리 업데이트
+                    Models[newModelName] = Models[oldModelName];
+                    Models[newModelName].Name = newModelName;
+                    Models.Remove(oldModelName);
+
+                    // Scripts 딕셔너리 업데이트
+                    Scripts[newModelName] = Scripts[oldModelName];
+                    Scripts.Remove(oldModelName);
+
+                    // ModelsList 업데이트
+                    var modelsList = ModelsList.ItemsSource as List<string>;
+                    int index = modelsList.IndexOf(oldModelName);
+                    modelsList[index] = newModelName;
+                    ModelsList.ItemsSource = null;
+                    ModelsList.ItemsSource = modelsList;
+
+                    // 선택된 아이템 업데이트
+                    ModelsList.SelectedItem = newModelName;
+
+                    UpdateSyntaxHighlighter();
+                }
+                else
+                {
+                    MessageBox.Show("유효하지 않은 모델 이름이거나 이미 존재하는 모델 이름입니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void MoveModelUp_Click(object sender, RoutedEventArgs e)
+        {
+            MoveSelectedModel(-1);
+        }
+
+        private void MoveModelDown_Click(object sender, RoutedEventArgs e)
+        {
+            MoveSelectedModel(1);
+        }
+
+        private void MoveSelectedModel(int direction)
+        {
+            bool IsUpEnd = ModelsList.SelectedIndex == 0 && direction < 0;
+            bool IsDownEnd = ModelsList.SelectedIndex == ModelsList.Items.Count - 1 && direction > 0;
+
+            if (IsUpEnd || IsDownEnd)
+            {
+                return;
+            }
+
+            var modelsList = Models.Keys.ToList();
+            int selectedIndex = ModelsList.SelectedIndex;
+            int newIndex = selectedIndex + direction;
+
+            if (newIndex >= 0 && newIndex < modelsList.Count)
+            {
+                string modelToMove = modelsList[selectedIndex];
+                modelsList.RemoveAt(selectedIndex);
+                modelsList.Insert(newIndex, modelToMove);
+
+                // Models와 Scripts 딕셔너리 순서 업데이트
+                var orderedModels = new Dictionary<string, Model>();
+                var orderedScripts = new Dictionary<string, string>();
+                foreach (var modelName in modelsList)
+                {
+                    orderedModels[modelName] = Models[modelName];
+                    orderedScripts[modelName] = Scripts[modelName];
+                }
+                Models = orderedModels;
+                Scripts = orderedScripts;
+
+                // UI 업데이트
+                ModelsList.ItemsSource = modelsList;
+                ModelsList.SelectedIndex = newIndex;
+
+                UpdateSyntaxHighlighter();
+            }
+        }
     }
 
     public class SignificantDigitsConverter : IValueConverter
@@ -728,6 +847,82 @@ namespace ActuLight.Pages
 
                 return roundedValue;
             }
+        }
+    }
+
+    public class InputDialog : Window
+    {
+        private TextBox answerTextBox;
+        public string Answer => answerTextBox.Text;
+
+        public InputDialog(string title, string question, string defaultAnswer = "")
+        {
+            Title = title;
+            Width = 300;
+            Height = 180;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+            // 기본 WPF 스타일 적용
+            Style = (Style)FindResource(typeof(Window));
+
+            var grid = new Grid();
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var questionTextBlock = new TextBlock
+            {
+                Text = question,
+                Margin = new Thickness(10),
+                TextWrapping = TextWrapping.Wrap
+            };
+            grid.Children.Add(questionTextBlock);
+            Grid.SetRow(questionTextBlock, 0);
+
+            answerTextBox = new TextBox
+            {
+                Text = defaultAnswer,
+                Margin = new Thickness(10),
+                Height = 25
+            };
+            grid.Children.Add(answerTextBox);
+            Grid.SetRow(answerTextBox, 1);
+
+            var buttonsPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(10)
+            };
+
+            var okButton = new Button
+            {
+                Content = "확인",
+                Width = 75,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0),
+                IsDefault = true
+            };
+            okButton.Click += (sender, e) => DialogResult = true;
+
+            var cancelButton = new Button
+            {
+                Content = "취소",
+                Width = 75,
+                Height = 30,
+                IsCancel = true
+            };
+            cancelButton.Click += (sender, e) => DialogResult = false;
+
+            buttonsPanel.Children.Add(okButton);
+            buttonsPanel.Children.Add(cancelButton);
+            grid.Children.Add(buttonsPanel);
+            Grid.SetRow(buttonsPanel, 2);
+
+            Content = grid;
+
+            // 텍스트박스에 포커스 설정
+            Loaded += (sender, e) => answerTextBox.Focus();
         }
     }
 

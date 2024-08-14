@@ -23,12 +23,18 @@ namespace ActuLiteModel
                     throw new ArgumentException($"메서드 '{methodName}'가 등록되지 않았습니다.");
                 }
 
-                if (t < 0) return 0;
                 if (t > MaxT)
                 {
                     throw new ArgumentOutOfRangeException(nameof(t),
-                        $"t 값은 {MaxT}를 초과할 수 없습니다. 현재 t: {t}, 현재 호출 스택: {CircularReferenceDetector.GetCallStackString()}");
+                        $"t 값은 {MaxT}를 초과할 수 없습니다. 현재 t: {t}");
                 }
+
+                if (CircularReferenceDetector.StackCount > 4096)
+                {
+                    throw new CircularReferenceException($"스택이 4000을 초과 하였습니다. 비효율적인 순환식 수정이 필요합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
+                }
+
+                if (t < 0) return 0;
 
                 if (!_cache.TryGetValue(methodName, out var methodCache))
                 { 
@@ -146,6 +152,8 @@ namespace ActuLiteModel
         private readonly Stack<(string MethodName, int T)> _callStack = new Stack<(string, int)>();
         private readonly Dictionary<(string MethodName, int T), int> _methodCalls = new Dictionary<(string, int), int>();
 
+        public int StackCount { get; private set; } = 0;
+       
         public void PushMethod(string methodName, int t)
         {
             var key = (methodName, t);
@@ -162,6 +170,7 @@ namespace ActuLiteModel
                 _methodCalls[key] = 1;
             }
             _callStack.Push(key);
+            StackCount++;
         }
 
         public void PopMethod()
@@ -170,6 +179,7 @@ namespace ActuLiteModel
             {
                 var key = _callStack.Pop();
                 _methodCalls[key]--;
+                StackCount--;
             }
         }
 

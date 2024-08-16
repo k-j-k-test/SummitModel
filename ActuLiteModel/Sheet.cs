@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Flee.PublicTypes;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,16 +10,16 @@ namespace ActuLiteModel
     public class Sheet
     {
         private Dictionary<string, Dictionary<int, double>> _cache = new Dictionary<string, Dictionary<int, double>>();
-        private Dictionary<string, Func<int, double>> _methods = new Dictionary<string, Func<int, double>>();
+        private Dictionary<string, IGenericExpression<double>> _expressions = new Dictionary<string, IGenericExpression<double>>();
 
-        public const int MaxT = 1300; // 최대 t 값 설정
+        public const int MaxT = 1200; // 최대 t 값 설정
         public CircularReferenceDetector CircularReferenceDetector { get; set; } = new CircularReferenceDetector();
 
-        public double GetValue(string methodName, int t)
+        public double GetValue(string cellName, int t)
         {
-            if (!_methods.TryGetValue(methodName, out var method))
+            if (!_expressions.TryGetValue(cellName, out var expression))
             {
-                throw new ArgumentException($"메서드 '{methodName}'가 등록되지 않았습니다.");
+                throw new ArgumentException($"메서드 '{cellName}'가 등록되지 않았습니다.");
             }
 
             if (t > MaxT)
@@ -29,57 +30,57 @@ namespace ActuLiteModel
 
             if (CircularReferenceDetector.StackCount > 4096)
             {
-                throw new CircularReferenceException($"스택이 4000을 초과 하였습니다. 비효율적인 순환식 수정이 필요합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
+                throw new CircularReferenceException($"스택이 4096을 초과 하였습니다. 순환식을 효율적으로 수정해야 합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
             }
 
             if (t < 0) return 0;
 
-            if (!_cache.TryGetValue(methodName, out var methodCache))
+            if (!_cache.TryGetValue(cellName, out var cellCache))
             {
-                methodCache = new Dictionary<int, double>();
-                _cache[methodName] = methodCache;
+                cellCache = new Dictionary<int, double>();
+                _cache[cellName] = cellCache;
             }
 
-            if (methodCache.TryGetValue(t, out var cachedValue))
+            if (cellCache.TryGetValue(t, out var cachedValue))
             {
                 return cachedValue;
             }
 
             try
             {
-                CircularReferenceDetector.PushMethod(methodName, t);
+                CircularReferenceDetector.PushCell(cellName, t);
 
-                double value = method(t);
-                methodCache[t] = value;
+                double value = expression.Evaluate();
+                cellCache[t] = value;
                 return value;
             }
             finally
             {
-                CircularReferenceDetector.PopMethod();
+                CircularReferenceDetector.PopCell();
             }
         }
 
-        public void SetValue(string methodName, int t, double value)
+        public void SetValue(string cellName, int t, double value)
         {
-            if (!_cache.TryGetValue(methodName, out var methodCache))
+            if (!_cache.TryGetValue(cellName, out var cellCache))
             {
-                methodCache = new Dictionary<int, double>();
-                _cache[methodName] = methodCache;
+                cellCache = new Dictionary<int, double>();
+                _cache[cellName] = cellCache;
             }
 
-            methodCache[t] = value;
+            cellCache[t] = value;
         }
 
-        public void RegisterMethod(string methodName, Func<int, double> method)
+        public void ResisterExpression(string cellName, IGenericExpression<double> expressions)
         {
-            _methods[methodName] = method;
+            _expressions[cellName] = expressions;
         }
 
-        public Func<int, double> GetMethod(string methodName)
+        public IGenericExpression<double> GetExpression(string cellName)
         {
-            if (_methods.TryGetValue(methodName, out var method))
+            if (_expressions.TryGetValue(cellName, out var expression))
             {
-                return method;
+                return expression;
             }
             return null;
         }
@@ -127,13 +128,6 @@ namespace ActuLiteModel
 
         public bool IsEmpty() => !_cache.Values.Any(v => v.Any());
 
-        public enum SortOption
-        {
-            Default,
-            Alphabetical,
-            FirstCalculationTime
-        }
-
         public void SortCache(Func<string, object> sortKeySelector)
         {
             var sortedItems = _cache.OrderBy(item => sortKeySelector(item.Key)).ToList();
@@ -145,62 +139,50 @@ namespace ActuLiteModel
         }
     }
 
-    public class NeedsFurtherCalculationException : Exception
-    {
-        public string MethodName { get; }
-        public int T { get; }
-
-        public NeedsFurtherCalculationException(string methodName, int t)
-        {
-            MethodName = methodName;
-            T = t;
-        }
-    }
-
     public class CircularReferenceDetector
     {
-        private readonly Stack<(string MethodName, int T)> _callStack = new Stack<(string, int)>();
-        private readonly Dictionary<(string MethodName, int T), int> _methodCalls = new Dictionary<(string, int), int>();
+        private readonly Stack<(string CellName, int T)> _callStack = new Stack<(string, int)>();
+        private readonly Dictionary<(string CellName, int T), int> _cellCalls = new Dictionary<(string, int), int>();
 
         public Dictionary<string, object> Context { get; } = new Dictionary<string, object>();
 
         public int StackCount { get; private set; } = 0;
        
-        public void PushMethod(string methodName, int t)
+        public void PushCell(string cellName, int t)
         {
-            var key = (methodName, t);
-            if (_methodCalls.TryGetValue(key, out int count))
+            var key = (cellName, t);
+            if (_cellCalls.TryGetValue(key, out int count))
             {
                 if (count > 0)
                 {
                     throw new CircularReferenceException(GetCallStackString());
                 }
-                _methodCalls[key]++;
+                _cellCalls[key]++;
             }
             else
             {
-                _methodCalls[key] = 1;
+                _cellCalls[key] = 1;
             }
             _callStack.Push(key);
             StackCount++;
         }
 
-        public void PopMethod()
+        public void PopCell()
         {
             if (_callStack.Count > 0)
             {
                 var key = _callStack.Pop();
-                _methodCalls[key]--;
+                _cellCalls[key]--;
                 StackCount--;
             }
         }
 
-        public Dictionary<(string MethodName, int T), int> GetMethodCalls()
+        public Dictionary<(string CellName, int T), int> GetMethodCalls()
         {
-            return new Dictionary<(string MethodName, int T), int>(_methodCalls);
+            return new Dictionary<(string Cellname, int T), int>(_cellCalls);
         }
 
-        public List<(string MethodName, int T)> GetCallStack()
+        public List<(string CellName, int T)> GetCallStack()
         {
             return _callStack.Reverse().ToList();
         }
@@ -210,15 +192,15 @@ namespace ActuLiteModel
             var stack = GetCallStack();
             if (stack.Count <= 20)
             {
-                return string.Join(" -> ", stack.Select(call => $"{call.MethodName}[{call.T}]"));
+                return string.Join(" -> ", stack.Select(call => $"{call.CellName}[{call.T}]"));
             }
             else
             {
                 var first10 = stack.Take(10);
                 var last10 = stack.Skip(Math.Max(0, stack.Count - 10));
-                return string.Join(" -> ", first10.Select(call => $"{call.MethodName}[{call.T}]")) +
+                return string.Join(" -> ", first10.Select(call => $"{call.CellName}[{call.T}]")) +
                        " -> ... -> " +
-                       string.Join(" -> ", last10.Select(call => $"{call.MethodName}[{call.T}]"));
+                       string.Join(" -> ", last10.Select(call => $"{call.CellName}[{call.T}]"));
             }
         }
     }

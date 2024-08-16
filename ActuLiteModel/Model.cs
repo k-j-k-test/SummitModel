@@ -37,7 +37,7 @@ namespace ActuLiteModel
 
                 foreach (var compiledCell in CompiledCells)
                 {
-                    Sheets[sheetName].RegisterMethod(compiledCell.Key, compiledCell.Value.CellFunc);
+                    Sheets[sheetName].ResisterExpression(compiledCell.Key, compiledCell.Value.Expression);
                 }
             }
         }
@@ -66,13 +66,13 @@ namespace ActuLiteModel
                     throw new InvalidOperationException($"시트 '{Name}'을 찾을 수 없습니다.");
                 }
 
-                var method = sheet.GetMethod(cellName);
-                if (method == null)
+                var expression = sheet.GetExpression(cellName);
+                if (expression == null)
                 {
                     throw new ArgumentException($"셀 '{cellName}'에 대한 메서드를 찾을 수 없습니다.");
                 }
 
-                double result = method(t);
+                double result = expression.Evaluate();
 
                 // 결과 값이 무한대이거나 허용 범위를 초과하는 경우 OverflowException 발생
                 if (double.IsInfinity(result) || Math.Abs(result) > MaxAllowedValue)
@@ -114,7 +114,6 @@ namespace ActuLiteModel
         public string Description { get; set; }
         public Model Model { get; set; }
         public IGenericExpression<double> Expression { get; set; }
-        public Func<int, double> CellFunc { get; set; }
 
         public bool IsCompiled { get; set; }
         public string CompileStatusMessage { get; set; }
@@ -134,7 +133,6 @@ namespace ActuLiteModel
             {
                 TransformedFormula = ModelEngine.TransformText(Formula, Model.Name);
                 Expression = Model.Engine.Context.CompileGeneric<double>(TransformedFormula);
-                CellFunc = t => Expression.Evaluate();
                 IsCompiled = true;
                 CompileStatusMessage = "Successfully Compiled";
             }

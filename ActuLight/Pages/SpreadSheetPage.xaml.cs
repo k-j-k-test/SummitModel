@@ -222,7 +222,7 @@ namespace ActuLight.Pages
                     {
                         UpdateInvokes();
                         SortSheets();
-                        UpdateSheets();
+                        UpdateSheets();                      
                     });
                 }
             }
@@ -359,11 +359,11 @@ namespace ActuLight.Pages
                     // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
                     model.Sheets.Clear();
                     var errorSheet = new Sheet();
-                    errorSheet.RegisterMethod("Error", _ => 0);
+                    errorSheet.ResisterExpression("Error", App.ModelEngine.Context.CompileGeneric<double>("0"));
                     errorSheet.SetValue("Error", 0, 0);  // 에러 표시를 위한 더미 데이터
 
                     // 에러 메시지를 별도의 메서드로 저장
-                    errorSheet.RegisterMethod("ErrorMessage", _ => 0);
+                    errorSheet.ResisterExpression("ErrorMessage", App.ModelEngine.Context.CompileGeneric<double>("0"));
                     errorSheet.SetValue("ErrorMessage", 0, 0);
 
                     model.Sheets["ErrorSheet"] = errorSheet;
@@ -384,8 +384,7 @@ namespace ActuLight.Pages
 
         public void UpdateSheets()
         {
-            SortSheets();
-
+            
             // 현재 선택된 탭의 이름 저장
             string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
 
@@ -573,7 +572,7 @@ namespace ActuLight.Pages
                     switch (sortOption)
                     {
                         case DataGridSortOption.CellDefinitionOrder:
-                            SortSheetByCellDefinition(sheet);
+                            SortSheetByCellDefinition(model, sheet);
                             break;
                         case DataGridSortOption.Alphabetical:
                             sheet.SortCache(key => key);
@@ -584,16 +583,14 @@ namespace ActuLight.Pages
             }
         }
 
-        private void SortSheetByCellDefinition(Sheet sheet)
+        private void SortSheetByCellDefinition(Model model, Sheet sheet)
         {
             if (cellMatches == null)
             {
                 return;
             }
 
-            var cellOrder = cellMatches.Cast<Match>()
-                .Select(m => m.Groups["cellName"].Value)
-                .ToList();
+            var cellOrder = model.CompiledCells.Select(x => x.Value.Name).ToList();
 
             sheet.SortCache(key =>
             {

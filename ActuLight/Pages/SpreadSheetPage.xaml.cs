@@ -360,11 +360,11 @@ namespace ActuLight.Pages
                     model.Sheets.Clear();
                     var errorSheet = new Sheet();
                     errorSheet.RegisterMethod("Error", _ => 0);
-                    errorSheet["Error", 0] = 0;  // 에러 표시를 위한 더미 데이터
+                    errorSheet.SetValue("Error", 0, 0);  // 에러 표시를 위한 더미 데이터
 
                     // 에러 메시지를 별도의 메서드로 저장
                     errorSheet.RegisterMethod("ErrorMessage", _ => 0);
-                    errorSheet["ErrorMessage", 0] = 0;
+                    errorSheet.SetValue("ErrorMessage", 0, 0);
 
                     model.Sheets["ErrorSheet"] = errorSheet;
 

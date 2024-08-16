@@ -11,65 +11,63 @@ namespace ActuLiteModel
         private Dictionary<string, Dictionary<int, double>> _cache = new Dictionary<string, Dictionary<int, double>>();
         private Dictionary<string, Func<int, double>> _methods = new Dictionary<string, Func<int, double>>();
 
-        public const int MaxT = 2000; // 최대 t 값 설정
+        public const int MaxT = 1300; // 최대 t 값 설정
         public CircularReferenceDetector CircularReferenceDetector { get; set; } = new CircularReferenceDetector();
 
-        public double this[string methodName, int t]
+        public double GetValue(string methodName, int t)
         {
-            get
+            if (!_methods.TryGetValue(methodName, out var method))
             {
-                if (!_methods.TryGetValue(methodName, out var method))
-                {
-                    throw new ArgumentException($"메서드 '{methodName}'가 등록되지 않았습니다.");
-                }
-
-                if (t > MaxT)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(t),
-                        $"t 값은 {MaxT}를 초과할 수 없습니다. 현재 t: {t}");
-                }
-
-                if (CircularReferenceDetector.StackCount > 4096)
-                {
-                    throw new CircularReferenceException($"스택이 4000을 초과 하였습니다. 비효율적인 순환식 수정이 필요합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
-                }
-
-                if (t < 0) return 0;
-
-                if (!_cache.TryGetValue(methodName, out var methodCache))
-                { 
-                    methodCache = new Dictionary<int, double>();
-                    _cache[methodName] = methodCache;
-                }
-
-                if (methodCache.TryGetValue(t, out var cachedValue))
-                {
-                    return cachedValue;
-                }
-
-                try
-                {
-                    CircularReferenceDetector.PushMethod(methodName, t);
-
-                    double value = method(t);
-                    methodCache[t] = value;
-                    return value;
-                }
-                finally
-                {
-                    CircularReferenceDetector.PopMethod();
-                }
+                throw new ArgumentException($"메서드 '{methodName}'가 등록되지 않았습니다.");
             }
-            set
-            {
-                if (!_cache.TryGetValue(methodName, out var methodCache))
-                {
-                    methodCache = new Dictionary<int, double>();
-                    _cache[methodName] = methodCache;
-                }
 
+            if (t > MaxT)
+            {
+                throw new ArgumentOutOfRangeException(nameof(t),
+                    $"t 값은 {MaxT}를 초과할 수 없습니다. 현재 t: {t}");
+            }
+
+            if (CircularReferenceDetector.StackCount > 4096)
+            {
+                throw new CircularReferenceException($"스택이 4000을 초과 하였습니다. 비효율적인 순환식 수정이 필요합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
+            }
+
+            if (t < 0) return 0;
+
+            if (!_cache.TryGetValue(methodName, out var methodCache))
+            {
+                methodCache = new Dictionary<int, double>();
+                _cache[methodName] = methodCache;
+            }
+
+            if (methodCache.TryGetValue(t, out var cachedValue))
+            {
+                return cachedValue;
+            }
+
+            try
+            {
+                CircularReferenceDetector.PushMethod(methodName, t);
+
+                double value = method(t);
                 methodCache[t] = value;
+                return value;
             }
+            finally
+            {
+                CircularReferenceDetector.PopMethod();
+            }
+        }
+
+        public void SetValue(string methodName, int t, double value)
+        {
+            if (!_cache.TryGetValue(methodName, out var methodCache))
+            {
+                methodCache = new Dictionary<int, double>();
+                _cache[methodName] = methodCache;
+            }
+
+            methodCache[t] = value;
         }
 
         public void RegisterMethod(string methodName, Func<int, double> method)
@@ -147,10 +145,24 @@ namespace ActuLiteModel
         }
     }
 
+    public class NeedsFurtherCalculationException : Exception
+    {
+        public string MethodName { get; }
+        public int T { get; }
+
+        public NeedsFurtherCalculationException(string methodName, int t)
+        {
+            MethodName = methodName;
+            T = t;
+        }
+    }
+
     public class CircularReferenceDetector
     {
         private readonly Stack<(string MethodName, int T)> _callStack = new Stack<(string, int)>();
         private readonly Dictionary<(string MethodName, int T), int> _methodCalls = new Dictionary<(string, int), int>();
+
+        public Dictionary<string, object> Context { get; } = new Dictionary<string, object>();
 
         public int StackCount { get; private set; } = 0;
        
@@ -214,5 +226,6 @@ namespace ActuLiteModel
     public class CircularReferenceException : Exception
     {
         public CircularReferenceException(string message) : base($"순환 참조가 감지되었습니다: {message}") { }
+
     }
 }

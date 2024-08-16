@@ -15,22 +15,88 @@ namespace ActuLiteModel
 
         public static double epsilon = 0.0000001;
 
-        public static double Eval(string modelName, string var, double t)
+        public static double Eval(string modelName, string cellName, double t)
         {
-            return GetCellValue(modelName, var, (int)(t + epsilon));
+            Model model = ModelDict[modelName];
+            Parameter modelParameter = model.Parameter;
+
+            // 현재 t 값 저장
+            int t0 = (int)model.Engine.Context.Variables["t"];
+
+            // 시트 이름 생성 및 추가
+            string sheetName = model.Name + modelParameter.ToString();
+            model.AddSheet(sheetName);
+
+            // t 값 설정
+            model.Engine.Context.Variables["t"] = (int)(t + epsilon);
+
+            // 셀 값 계산
+            double val = model.Sheets[sheetName].GetValue(cellName, (int)(t + epsilon));
+
+            // 원래 t 값 복원
+            model.Engine.Context.Variables["t"] = t0;
+
+            return val;
         }
 
-        public static double Eval(string modelName, string var, double t, params object[] kvpairs)
+        public static double Eval(string modelName, string cellName, double t, params object[] kvpairs)
         {
-            return GetCellValue(modelName, var, (int)(t + epsilon), kvpairs);
+            // 모델 및 파라미터 설정
+            Model model = ModelDict[modelName];
+
+            for (int i = 0; i < kvpairs.Length; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    kvpairs[i] = model.Engine.Context.GetOriginalVariableName(kvpairs[i].ToString());
+                }
+            }
+
+            Parameter additionalParameter = Parameter.FromKeyValuePairs(kvpairs);
+            Parameter modelParameter = model.Parameter;
+            modelParameter.Add(additionalParameter);
+
+            // 초기 상태 저장
+            var initialState = SaveInitialState(model, additionalParameter);
+
+            // 시트 이름 생성 및 추가
+            string sheetName = model.Name + modelParameter.ToString();
+            model.AddSheet(sheetName);
+
+            // 새 파라미터 적용
+            ApplyParameters(model, (int)(t + epsilon), additionalParameter, modelParameter);
+
+            // 셀 값 계산
+            double val = model.Sheets[sheetName].GetValue(cellName, (int)(t + epsilon));
+
+            // 초기 상태로 복원
+            RestoreInitialState(model, initialState);
+
+            // 추가된 파라미터 제거
+            modelParameter.Remove(additionalParameter);
+
+            return val;
         }
 
         public static double Assum(string modelName, double t, params object[] assumptionKeys)
         {
-           return GetAssumptionValue(modelName, Math.Min((int)(t + epsilon), Sheet.MaxT), assumptionKeys.Select(x => x.ToString()).ToArray());
+            int Min_t = Math.Min((int)(t + epsilon), Sheet.MaxT);
+
+            string[] keys = assumptionKeys.Select(x => x.ToString()).ToArray();
+
+            List<double> Rates = ModelDict[modelName].Engine.GetAssumptionRate(keys);
+
+            if (t < Rates.Count)
+            {
+                return Rates[Min_t];
+            }
+            else
+            {
+                return 0;
+            }
         }
 
-        public static double Sum(string modelName, string var, double start, double end)
+        public static double Sum(string modelName, string cellName, double start, double end)
         {
             int _start = (int)(start + epsilon);
             int _end = (int)(end + epsilon);
@@ -39,13 +105,13 @@ namespace ActuLiteModel
 
             if (_end > Sheet.MaxT)
             {
-                throw new ArgumentOutOfRangeException($"{var}, Sum함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+                throw new ArgumentOutOfRangeException($"{cellName}, Sum함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
             }
 
-            return Enumerable.Range(_start, _end - _start + 1).Sum(t => GetCellValue(modelName, var, t));
+            return Enumerable.Range(_start, _end - _start + 1).Sum(t => Eval(modelName, cellName, t));
         }
 
-        public static double Prd(string modelName, string var, double start, double end)
+        public static double Prd(string modelName, string cellName, double start, double end)
         {
             int _start = (int)(start + epsilon);
             int _end = (int)(end + epsilon);
@@ -54,10 +120,10 @@ namespace ActuLiteModel
 
             if (_end > Sheet.MaxT)
             {
-                throw new ArgumentOutOfRangeException($"{var}, Prd함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+                throw new ArgumentOutOfRangeException($"{cellName}, Prd함수의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
             }
 
-            return Enumerable.Range(_start, _end - _start + 1).Select(t => GetCellValue(modelName, var, t)).Aggregate((total, next) => total * next);
+            return Enumerable.Range(_start, _end - _start + 1).Select(t => Eval(modelName, cellName, t)).Aggregate((total, next) => total * next);
         }
 
         public static double Max(params double[] vals) => vals.Max();
@@ -117,71 +183,6 @@ namespace ActuLiteModel
             return Value(Date(value).AddDays(days));
         }
 
-        // 시간 파라미터만 존재 할 경우 셀 값 계산을 위한 GetCellValue 메서드
-        private static double GetCellValue(string modelName, string cellName, int t)
-        {
-            Model model = ModelDict[modelName];
-            Parameter modelParameter = model.Parameter;
-
-            // 현재 t 값 저장
-            int t0 = (int)model.Engine.Context.Variables["t"];
-
-            // 시트 이름 생성 및 추가
-            string sheetName = model.Name + modelParameter.ToString();
-            model.AddSheet(sheetName);
-
-            // t 값 설정
-            model.Engine.Context.Variables["t"] = t;
-
-            // 셀 값 계산
-            double val = model.Sheets[sheetName][cellName, t];
-
-            // 원래 t 값 복원
-            model.Engine.Context.Variables["t"] = t0;
-
-            return val;
-        }
-
-        // 추가 파라미터를 포함한 셀 값 계산을 위한 GetCellValue 메서드
-        private static double GetCellValue(string modelName, string cellName, int t, params object[] kvpairs)
-        {
-            // 모델 및 파라미터 설정
-            Model model = ModelDict[modelName];
-
-            for (int i = 0; i < kvpairs.Length; i++)
-            {
-                if (i % 2 == 0)
-                {
-                    kvpairs[i] = model.Engine.Context.GetOriginalVariableName(kvpairs[i].ToString());
-                }
-            }
-
-            Parameter additionalParameter = Parameter.FromKeyValuePairs(kvpairs);
-            Parameter modelParameter = model.Parameter;
-            modelParameter.Add(additionalParameter);
-
-            // 초기 상태 저장
-            var initialState = SaveInitialState(model, additionalParameter);
-
-            // 시트 이름 생성 및 추가
-            string sheetName = model.Name + modelParameter.ToString();
-            model.AddSheet(sheetName);
-
-            // 새 파라미터 적용
-            ApplyParameters(model, t, additionalParameter, modelParameter);
-
-            // 셀 값 계산
-            double val = model.Sheets[sheetName][cellName, t];
-
-            // 초기 상태로 복원
-            RestoreInitialState(model, initialState);
-
-            // 추가된 파라미터 제거
-            modelParameter.Remove(additionalParameter);
-
-            return val;
-        }
-
         // 모델의 초기 상태를 저장하는 메서드
         private static Dictionary<string, object> SaveInitialState(Model model, Parameter additionalParameter)
         {
@@ -231,20 +232,6 @@ namespace ActuLiteModel
         private static void SetVariableValue(IDictionary<string, object> variables, string key, object value)
         {           
             variables[key] = Convert.ChangeType(value, variables[key].GetType());
-        }
-
-        private static double GetAssumptionValue(string modelName, int t, string[] assumptionKeys)
-        {
-            List<double> Rates = ModelDict[modelName].Engine.GetAssumptionRate(assumptionKeys);
-
-            if (t < Rates.Count)
-            {
-                return Rates[t];
-            }
-            else
-            {
-                return 0;
-            }
         }
 
         private static double StringToDouble(string str)

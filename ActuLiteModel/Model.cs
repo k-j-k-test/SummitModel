@@ -80,7 +80,7 @@ namespace ActuLiteModel
                     throw new OverflowException($"계산 결과가 허용 범위를 초과했습니다: 셀 {cellName}, t={t}, 결과={result}");
                 }
 
-                sheet[cellName, t] = result;
+                sheet.SetValue(cellName, t, result);
 
             }
             catch (Exception ex)

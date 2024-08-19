@@ -85,18 +85,15 @@ namespace ActuLiteModel
             return null;
         }
 
-        public IEnumerable<int> GetAllT()
-        {
-            return _cache.Values
-                .SelectMany(v => v.Keys)
-                .Distinct()
-                .OrderBy(t => t);
-        }
-
         public string GetAllData()
         {
             var sb = new StringBuilder();
-            var allT = GetAllT().ToList();
+
+            var allT = _cache.Values
+                .SelectMany(v => v.Keys)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToList();
 
             var methods = _cache.Where(kv => kv.Value.Any())
                                 .Select(kv => kv.Key)

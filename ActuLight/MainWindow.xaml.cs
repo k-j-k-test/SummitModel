@@ -8,7 +8,6 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Navigation;
 using ActuLight.Pages;
 using ActuLiteModel;
@@ -117,7 +116,6 @@ namespace ActuLight
                 AddExtension = true
             };
 
-            // 마지막으로 저장한 파일 경로가 있다면 초기 파일명으로 설정
             if (!string.IsNullOrEmpty(lastSavedFilePath))
             {
                 saveFileDialog.FileName = Path.GetFileName(lastSavedFilePath);
@@ -143,19 +141,20 @@ namespace ActuLight
                     }
                 }
 
-                // cell 데이터 가져오기
-                if (App.ModelEngine != null && App.ModelEngine.Models.Any())
+                // Scripts 내용을 각 시트로 저장
+                var spreadSheetPage = pageCache["Pages/SpreadsheetPage.xaml"] as SpreadSheetPage;
+                if (spreadSheetPage != null && spreadSheetPage.Scripts != null)
                 {
-                    var cellData = new List<List<object>>();
-                    cellData.Add(new List<object> { "Model", "Cell", "Formula", "Description" }); // 헤더 추가
-                    foreach (var model in App.ModelEngine.Models.Values)
+                    foreach (var script in spreadSheetPage.Scripts)
                     {
-                        foreach (var cell in model.CompiledCells.Values)
+                        var scriptData = new List<List<object>>();
+                        var lines = script.Value.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+                        foreach (var line in lines)
                         {
-                            cellData.Add(new List<object> { model.Name, cell.Name, cell.Formula, cell.Description });
+                            scriptData.Add(new List<object> { line });
                         }
+                        sheets[script.Key] = scriptData;
                     }
-                    sheets["cell"] = cellData;
                 }
 
                 try

@@ -142,23 +142,6 @@ namespace ActuLiteModel
                 CompileStatusMessage = ex.Message;
             }
         }
-
-        public void GetTest()
-        {
-            try
-            {
-                Model.Sheets.Clear();
-                Model.Invoke(Name, 0);
-                Model.Sheets.Clear();
-                Model.Invoke(Name, 99);
-                Model.Sheets.Clear();
-            }
-            catch (Exception ex)
-            {
-                this.IsCompiled = false;
-                this.CompileStatusMessage = ex.Message;
-            }
-        }
     }
 
 }

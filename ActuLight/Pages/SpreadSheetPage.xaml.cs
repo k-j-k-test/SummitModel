@@ -11,19 +11,23 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.IO;
 using Newtonsoft.Json;
+using System.Text;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Folding;
+using ICSharpCode.AvalonEdit;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TextBox;
 
 namespace ActuLight.Pages
 {
     public partial class SpreadSheetPage : Page
     {
         public SyntaxHighlighter SyntaxHighlighter;
+        public RegionFoldingStrategy FoldingStrategy;
+        public FoldingManager FoldingManager;
 
         public Dictionary<string, Model> Models = App.ModelEngine.Models;
         public Dictionary<string, string> Scripts { get; set; } = new Dictionary<string, string>();
         public int SignificantDigits;
-
-        public int ThrottleMs = 300;
-        public int DebounceMs = 500;
 
         private string selectedModel;
         private string selectedCell;
@@ -39,11 +43,25 @@ namespace ActuLight.Pages
             UpdateSyntaxHighlighter();
             LoadSignificantDigitsSetting();
 
+            // 폴딩 기능 추가
+            var foldingMargin = new FoldingMargin();
+            foldingMargin.Width = 10;
+            ScriptEditor.TextArea.LeftMargins.Add(foldingMargin);
+            FoldingManager = FoldingManager.Install(ScriptEditor.TextArea);
+            FoldingStrategy = new RegionFoldingStrategy();
+            FoldingStrategy.UpdateFoldings(FoldingManager, ScriptEditor.Document);
+            ScriptEditor.Options.EnableHyperlinks = true;
+            ScriptEditor.Options.EnableEmailHyperlinks = true;
+            ScriptEditor.Options.ConvertTabsToSpaces = true;
+
+            //텍스트 변경 이벤트
             ScriptEditor.TextChanged += ScriptEditor_TextChanged;
+            ScriptEditor.Options.ShowSpaces = false;
+            ScriptEditor.Options.HighlightCurrentLine = true;
+            ScriptEditor.Options.AllowScrollBelowDocument = true;
 
             // Ctrl+S 키 이벤트 처리를 위한 핸들러 추가
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
-
             ModelsList.MouseRightButtonUp += ModelsList_MouseRightButtonUp;
         }
 
@@ -55,25 +73,37 @@ namespace ActuLight.Pages
             try
             {
                 var filePage = ((MainWindow)Application.Current.MainWindow).pageCache["Pages/FilePage.xaml"] as FilePage;
-                if (filePage?.excelData?.ContainsKey("cell") == true)
+                if (filePage?.excelData != null)
                 {
-                    var cellData = filePage.excelData["cell"];
-                    var headers = cellData[0].Select(h => h.ToString()).ToList();
-                    var data = cellData.Skip(1).ToList();
+                    Scripts.Clear();
+                    Models.Clear();
 
-                    var cells = ExcelImporter.ConvertToClassList<Input_cell>(data);
+                    foreach (var sheetPair in filePage.excelData)
+                    {
+                        string sheetName = sheetPair.Key;
+                        if (sheetName != "mp" && sheetName != "assum")
+                        {
+                            var sheetData = sheetPair.Value;
+                            if (sheetData.Count > 0)
+                            {
+                                StringBuilder scriptBuilder = new StringBuilder();
+                                foreach (var row in sheetData)
+                                {
+                                    if (row.Count > 0)
+                                    {
+                                        scriptBuilder.AppendLine(row[0].ToString());
+                                    }
+                                }
+                                Scripts[sheetName] = scriptBuilder.ToString().TrimEnd();
+
+                                // Create a new Model for each sheet
+                                Models[sheetName] = new Model(sheetName, App.ModelEngine);
+                            }
+                        }
+                    }
 
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        App.ModelEngine.SetModel(cells);
-
-                        Scripts.Clear();
-                        foreach (var modelPair in Models)
-                        {
-                            Scripts[modelPair.Key] = string.Join(Environment.NewLine, modelPair.Value.CompiledCells.Values.Select(cell =>
-                                $"{(string.IsNullOrWhiteSpace(cell.Description) ? "" : $"//{cell.Description}{Environment.NewLine}")}{cell.Name} -- {cell.Formula}{Environment.NewLine}"));
-                        }
-
                         ModelsList.ItemsSource = Models.Keys.ToList();
                         UpdateSyntaxHighlighter();
                     });
@@ -81,7 +111,7 @@ namespace ActuLight.Pages
                 }
                 else
                 {
-                    MessageBox.Show("Cell 데이터를 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("불러올 데이터를 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -159,11 +189,12 @@ namespace ActuLight.Pages
 
                 Model model = Models[selectedModel];
 
+                //Folding Update
+                FoldingStrategy.UpdateFoldings(FoldingManager, ScriptEditor.Document);
+
                 // Update cellMatches
                 var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
                 var newCellMatches = cellPattern.Matches(text);
-
-
 
                 // Check for cell changes
                 bool hasCellChanges = cellMatches == null ||
@@ -176,6 +207,8 @@ namespace ActuLight.Pages
 
                 if (hasCellChanges)
                 {
+                    UpdateModelCells(newCellMatches);
+
                     // 컴파일된 셀 이름 목록 생성
                     var compiledCellNames = model.CompiledCells.Values
                         .Where(cell => cell.IsCompiled)
@@ -192,7 +225,6 @@ namespace ActuLight.Pages
 
                     cellMatches = newCellMatches;
 
-                    UpdateModelCells(newCellMatches);
                     await Dispatcher.InvokeAsync(() =>
                     {
                         UpdateCellList(selectedModel);
@@ -220,9 +252,9 @@ namespace ActuLight.Pages
                     invokeList = newInvokeList;
                     await Dispatcher.InvokeAsync(() =>
                     {
-                        UpdateInvokes();
+                        UpdateInvokes();                                
                         SortSheets();
-                        UpdateSheets();                      
+                        UpdateSheets();
                     });
                 }
             }
@@ -333,7 +365,7 @@ namespace ActuLight.Pages
             foreach (var cellToRemove in cellsToRemove)
             {
                 model.CompiledCells.Remove(cellToRemove);
-            }
+            }  
         }
 
         public void UpdateInvokes()
@@ -370,10 +402,6 @@ namespace ActuLight.Pages
 
                     // CellStatusTextBlock 업데이트
                     CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
-                }
-                finally
-                {
-                    UpdateSheets();
                 }
             }
             else
@@ -565,32 +593,31 @@ namespace ActuLight.Pages
         {
             var sortOption = App.SettingsManager.CurrentSettings.DataGridSortOption;
 
-            foreach (var model in Models.Values)
+            foreach (var sheet in Models[selectedModel].Sheets.Values)
             {
-                foreach (var sheet in model.Sheets.Values)
+                switch (sortOption)
                 {
-                    switch (sortOption)
-                    {
-                        case DataGridSortOption.CellDefinitionOrder:
-                            SortSheetByCellDefinition(model, sheet);
-                            break;
-                        case DataGridSortOption.Alphabetical:
-                            sheet.SortCache(key => key);
-                            break;
-                            // Default case: 기존 순서 유지
-                    }
+                    case DataGridSortOption.CellDefinitionOrder:
+                        SortSheetByCellDefinition(sheet);
+                        break;
+                    case DataGridSortOption.Alphabetical:
+                        sheet.SortCache(key => key);
+                        break;
+                        // Default case: 기존 순서 유지
                 }
             }
         }
 
-        private void SortSheetByCellDefinition(Model model, Sheet sheet)
+        private void SortSheetByCellDefinition(Sheet sheet)
         {
             if (cellMatches == null)
             {
                 return;
             }
 
-            var cellOrder = model.CompiledCells.Select(x => x.Value.Name).ToList();
+            var cellOrder = cellMatches.Cast<Match>()
+                .Select(m => m.Groups["cellName"].Value)
+                .ToList();
 
             sheet.SortCache(key =>
             {
@@ -617,6 +644,8 @@ namespace ActuLight.Pages
             {
                 e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
                 ScriptEditor_TextChanged("save", null);
+
+                Scripts[selectedModel] = ScriptEditor.Text;
 
                 // MainWindow의 SaveExcelFile 메서드 호출
                 var mainWindow = Application.Current.MainWindow as MainWindow;
@@ -844,6 +873,51 @@ namespace ActuLight.Pages
 
                 return roundedValue;
             }
+        }
+    }
+
+    public class RegionFoldingStrategy
+    {
+        private static readonly Regex regionStartRegex = new Regex(@"^\s*#region\s+(.*)$", RegexOptions.Compiled);
+        private static readonly Regex regionEndRegex = new Regex(@"^\s*#endregion", RegexOptions.Compiled);
+
+        public void UpdateFoldings(FoldingManager manager, TextDocument document)
+        {
+            IEnumerable<NewFolding> newFoldings = CreateNewFoldings(document, out int firstErrorOffset);
+            manager.UpdateFoldings(newFoldings, firstErrorOffset);
+        }
+
+        public IEnumerable<NewFolding> CreateNewFoldings(TextDocument document, out int firstErrorOffset)
+        {
+            firstErrorOffset = -1;
+            List<NewFolding> newFoldings = new List<NewFolding>();
+
+            Stack<int> startOffsets = new Stack<int>();
+            Stack<string> names = new Stack<string>();
+
+            foreach (DocumentLine line in document.Lines)
+            {
+                string text = document.GetText(line);
+                Match startMatch = regionStartRegex.Match(text);
+                if (startMatch.Success)
+                {
+                    startOffsets.Push(line.Offset);
+                    names.Push(startMatch.Groups[1].Value.Trim());
+                }
+                else
+                {
+                    Match endMatch = regionEndRegex.Match(text);
+                    if (endMatch.Success && startOffsets.Count > 0)
+                    {
+                        int startOffset = startOffsets.Pop();
+                        string name = names.Pop();
+                        newFoldings.Add(new NewFolding(startOffset, line.EndOffset) { Name = name });
+                    }
+                }
+            }
+
+            newFoldings.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
+            return newFoldings;
         }
     }
 

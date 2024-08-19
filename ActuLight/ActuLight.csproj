@@ -7,7 +7,7 @@
     <StartupObject>ActuLight.App</StartupObject>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
-    <LinkerCommandLineOptions>/STACK:32000000</LinkerCommandLineOptions>   
+    <LinkerCommandLineOptions>/STACK:16777216</LinkerCommandLineOptions>   
   </PropertyGroup>
   
   <ItemGroup>

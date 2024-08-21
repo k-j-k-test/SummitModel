@@ -5,14 +5,11 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web.Caching;
 using Flee.PublicTypes;
-using System.Windows;
-using System.Threading;
 
 namespace ActuLiteModel
 {
-    public class Model : BaseModel
+    public class Model
     {
         public string Name { get; set; }
         public ModelEngine Engine { get; set; }
@@ -95,15 +92,6 @@ namespace ActuLiteModel
             Sheets = new Dictionary<string, Sheet>();
         }
 
-    }
-
-    public class BaseModel
-    {
-        public T If<T>(bool condition, T truevalue, T falsevalue)
-        {
-            if (condition) return truevalue;
-            else return falsevalue;
-        }
     }
 
     public class CompiledCell

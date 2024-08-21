@@ -23,10 +23,10 @@ namespace ActuLiteModel
         public List<double> Rates { get; set; }
     }
 
-    public class Input_setting
+    public class Input_output
     {
-        public string Property { get; set; }
-        public int Type { get; set; }
+        public string TableName { get; set; }
+        public string ColumnName { get; set; }
         public string Value { get; set; }
     }
 

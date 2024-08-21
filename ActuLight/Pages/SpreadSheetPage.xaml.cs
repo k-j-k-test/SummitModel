@@ -15,7 +15,6 @@ using System.Text;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TextBox;
 
 namespace ActuLight.Pages
 {
@@ -548,9 +547,10 @@ namespace ActuLight.Pages
 
                     foreach (var header in headers)
                     {
-                        var column = new DataGridTextColumn() 
+                        var column = new DataGridTextColumn()
                         {
-                            Header = header,
+                            Header = new TextBlock { Text = header },
+                            Binding = new Binding($"[{header}]")
                         };
 
                         var binding = new Binding($"[{header}]");
@@ -675,8 +675,8 @@ namespace ActuLight.Pages
 
                 string filePath = Path.Combine(samplesDirectory, $"Sample.xlsx");
 
-                // Models가 이미 정렬되어 있으므로, 그대로 SaveToExcel 메서드에 전달
-                App.ModelEngine.SaveToExcel(filePath);
+                // Models가 이미 정렬되어 있으므로, 그대로 SaveSampleToExcel 메서드에 전달
+                App.ModelEngine.SaveSampleToExcel(filePath);
                 ModelEngine.RunLatestExcelFile(filePath);
             }
             catch (Exception ex)

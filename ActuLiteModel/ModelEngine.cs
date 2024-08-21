@@ -23,7 +23,11 @@ namespace ActuLiteModel
 
         public Dictionary<string, Model> Models { get; private set; }
 
-        public Dictionary<string, object> SelectedPoint { get;  set; }
+        public (List<string> Types, List<string> Headers) ModelPointInfo { get; private set; }
+
+        public List<List<object>> ModelPoints { get; private set; }
+
+        public List<object> SelectedPoint { get;  set; }
 
         public ModelEngine()
         {
@@ -32,6 +36,7 @@ namespace ActuLiteModel
             Assumptions = new Dictionary<string, List<Input_assum>>();
             Conditions = new Dictionary<string, IGenericExpression<bool>>();
             Models = new Dictionary<string, Model>();
+            ModelPoints = new List<List<object>>();
             FleeFunc.ModelDict = Models;
         }
 
@@ -39,9 +44,9 @@ namespace ActuLiteModel
         {
             Context.Variables["t"] = 0;
 
-            foreach(var point in SelectedPoint)
+            for (int i = 0; i < ModelPointInfo.Headers.Count; i++)
             {
-                Context.Variables[point.Key] = point.Value;
+                Context.Variables[ModelPointInfo.Headers[i]] = SelectedPoint[i];
             }
         }
 
@@ -90,6 +95,12 @@ namespace ActuLiteModel
 
                 Models[cell.Model].ResisterCell(cell.Cell, cell.Formula, cell.Description);
             }         
+        }
+
+        public void SetModelPoints(List<List<object>> modelPoints, List<string> types, List<string> headers)
+        {
+            ModelPoints = modelPoints;
+            ModelPointInfo = (types, headers);
         }
 
         public List<double> GetAssumptionRate(params string[] keys)
@@ -270,7 +281,7 @@ namespace ActuLiteModel
             return parts.ToArray();
         }
 
-        public void SaveToText(string filePath)
+        public void SaveSampleToText(string filePath)
         {
             string fileName = GenerateVersionedFileName(filePath);
 
@@ -300,7 +311,7 @@ namespace ActuLiteModel
             Console.WriteLine($"Text file saved: {fileName}");
         }
 
-        public void SaveToExcel(string filePath)
+        public void SaveSampleToExcel(string filePath)
         {
             string fileName = GenerateVersionedFileName(filePath);
 

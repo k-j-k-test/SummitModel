@@ -8,6 +8,7 @@
             <Button Content="모델포인트" Margin="0,0,5,0" Click="ModelPointButton_Click"/>
             <Button Content="가정" Margin="0,0,5,0" Click="AssumptionButton_Click"/>
             <Button Content="스프레드시트" Margin="0,0,5,0" Click="SpreadsheetButton_Click"/>
+            <Button Content="출력" Margin="0,0,5,0" Click="OutputButton_Click"/>
             <Button Content="설정" Margin="0,0,5,0" Click="SettingsButton_Click"/>
         </StackPanel>
     </Border>

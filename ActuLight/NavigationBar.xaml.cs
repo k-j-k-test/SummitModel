@@ -48,5 +48,10 @@ namespace ActuLight
         {
             ((MainWindow)Window.GetWindow(this)).NavigateTo("SettingsPage");
         }
+
+        private void OutputButton_Click(object sender, RoutedEventArgs e)
+        {
+            ((MainWindow)Window.GetWindow(this)).NavigateTo("OutputPage");
+        }
     }
 }

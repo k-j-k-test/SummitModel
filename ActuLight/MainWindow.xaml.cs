@@ -70,6 +70,8 @@ namespace ActuLight
                     return new AssumptionPage();
                 case "Pages/SpreadsheetPage.xaml":
                     return new SpreadSheetPage();
+                case "Pages/OutputPage.xaml":
+                    return new OutputPage();
                 case "Pages/SettingsPage.xaml":
                     return new SettingsPage();
                 default:

@@ -51,6 +51,9 @@ namespace ActuLight.Pages
 
                     dataExpander = new DataExpander(types, headers);
 
+                    // ModelEngine의 ModelPoints 설정
+                    App.ModelEngine.SetModelPoints(originalData, types, headers);
+
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         UpdateDataGrid(MainDataGrid, headers, originalData);
@@ -67,7 +70,7 @@ namespace ActuLight.Pages
                             UpdateSelectedDataDisplay();
 
                             // ModelEngine의 SetModelPoint 실행
-                            App.ModelEngine.SelectedPoint = headers.Zip(SelectedData, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+                            App.ModelEngine.SelectedPoint = SelectedData;
                             App.ModelEngine.SetModelPoint();
                         }
                     }
@@ -196,7 +199,7 @@ namespace ActuLight.Pages
             UpdateSelectedDataDisplay();
 
             // ModelEngine의 SetModelPoint 실행
-            App.ModelEngine.SelectedPoint = headers.Zip(SelectedData, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+            App.ModelEngine.SelectedPoint = newSelectedData;
             App.ModelEngine.SetModelPoint();
 
             MessageBox.Show("선택된 데이터가 업데이트되었습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);

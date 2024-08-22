@@ -101,7 +101,7 @@ namespace ActuLight.Pages
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
             _startTime = DateTime.Now;
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
             _timer.Tick += Timer_Tick;
             _timer.Start();
 

@@ -43,6 +43,11 @@ public class ModelWriter
                 {
                     try
                     {
+                        foreach(Model model in  _modelEngine.Models.Values)
+                        {
+                            model.Clear();
+                        }
+
                         _modelEngine.SelectedPoint = point;
                         _modelEngine.SetModelPoint();
                         var results = CalculateResults(tableName);
@@ -67,6 +72,11 @@ public class ModelWriter
         for (int i = 1; i < excelData.Count; i++)
         {
             var row = excelData[i];
+            if(row.Any(x => x == null))
+            {
+                continue;
+            }
+
             var tableName = row[0].ToString();
             var columnName = row[1].ToString();
             var value = row[2].ToString();

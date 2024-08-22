@@ -80,7 +80,7 @@ namespace ActuLight.Pages
                     foreach (var sheetPair in filePage.excelData)
                     {
                         string sheetName = sheetPair.Key;
-                        if (sheetName != "mp" && sheetName != "assum")
+                        if (sheetName != "mp" && sheetName != "assum" && sheetName != "out")
                         {
                             var sheetData = sheetPair.Value;
                             if (sheetData.Count > 0)

@@ -44,13 +44,13 @@ namespace ActuLiteModel
             // 모델 및 파라미터 설정
             Model model = ModelDict[modelName];
 
-            for (int i = 0; i < kvpairs.Length; i++)
-            {
-                if (i % 2 == 0)
-                {
-                    kvpairs[i] = model.Engine.Context.GetOriginalVariableName(kvpairs[i].ToString());
-                }
-            }
+            //for (int i = 0; i < kvpairs.Length; i++)
+            //{
+            //    if (i % 2 == 0)
+            //    {
+            //        kvpairs[i] = model.Engine.Context.GetOriginalVariableName(kvpairs[i].ToString());
+            //    }
+            //}
 
             Parameter additionalParameter = Parameter.FromKeyValuePairs(kvpairs);
             Parameter modelParameter = model.Parameter;

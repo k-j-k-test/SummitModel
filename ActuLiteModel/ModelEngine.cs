@@ -15,7 +15,7 @@ namespace ActuLiteModel
 {
     public class ModelEngine
     {
-        public KoreanExpressionContext Context { get; private set; }
+        public ExpressionContext Context { get; private set; }
 
         public Dictionary<string, List<Input_assum>> Assumptions { get; private set; }
 
@@ -31,7 +31,7 @@ namespace ActuLiteModel
 
         public ModelEngine()
         {
-            Context = new KoreanExpressionContext();
+            Context = new ExpressionContext();
             Context.Imports.AddType(typeof(FleeFunc));
             Assumptions = new Dictionary<string, List<Input_assum>>();
             Conditions = new Dictionary<string, IGenericExpression<bool>>();

@@ -91,7 +91,6 @@
     <Compile Include="DataExpander.cs" />
     <Compile Include="FleeFunc.cs" />
     <Compile Include="ModelWriter.cs" />
-    <Compile Include="Parameter.cs" />
     <Compile Include="Sheet.cs" />
     <Compile Include="ModelEngine.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

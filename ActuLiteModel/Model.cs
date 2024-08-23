@@ -12,8 +12,9 @@ namespace ActuLiteModel
     public class Model
     {
         public string Name { get; set; }
+        public string CurrentSheetName { get; set; }
         public ModelEngine Engine { get; set; }
-        public Parameter Parameter { get; set; }
+        public Dictionary<string, object> Parameters { get; set; }
         public Dictionary<string, Sheet> Sheets { get; set; }
         public Dictionary<string, CompiledCell> CompiledCells { get; set; }
 
@@ -21,7 +22,8 @@ namespace ActuLiteModel
         {
             Name = name;
             Engine = engine;
-            Parameter = new Parameter();
+            CurrentSheetName = name;
+            Parameters = new Dictionary<string, object>();
             Sheets = new Dictionary<string, Sheet>();
             CompiledCells = new Dictionary<string, CompiledCell>();
         }
@@ -88,7 +90,8 @@ namespace ActuLiteModel
 
         public void Clear()
         {
-            Parameter = new Parameter();
+            CurrentSheetName = Name;
+            Parameters = new Dictionary<string, object>();
             Sheets = new Dictionary<string, Sheet>();
         }
 

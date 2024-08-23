@@ -90,7 +90,14 @@ namespace ActuLight.Pages
                                 {
                                     if (row.Count > 0)
                                     {
-                                        scriptBuilder.AppendLine(row[0].ToString());
+                                        if (row.Any(x => x == null))
+                                        {
+                                            scriptBuilder.AppendLine("");
+                                        }
+                                        else
+                                        {
+                                            scriptBuilder.AppendLine(row[0].ToString());
+                                        }    
                                     }
                                 }
                                 Scripts[sheetName] = scriptBuilder.ToString().TrimEnd();

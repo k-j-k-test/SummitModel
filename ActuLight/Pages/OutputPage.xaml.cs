@@ -140,7 +140,7 @@ namespace ActuLight.Pages
             TimeSpan elapsed = DateTime.Now - _startTime;
             Dispatcher.Invoke(() =>
             {
-                TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss}";
+                TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss\\.ff}";
                 TotalPointsLabel.Text = $"전체 건수: {_modelWriter.TotalPoints}";
                 CompletedPointsLabel.Text = $"완료 건수: {_modelWriter.CompletedPoints}";
                 ErrorPointsLabel.Text = $"오류 건수: {_modelWriter.ErrorPoints}";

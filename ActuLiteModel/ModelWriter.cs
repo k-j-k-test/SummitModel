@@ -52,6 +52,9 @@ public class ModelWriter
                         _modelEngine.SetModelPoint();
                         var results = CalculateResults(tableName);
                         WriteResultsForPoint(outputWriter, results);
+
+                        //WriteStatus(outputWriter, _modelEngine.Models["PV"].Sheets);
+
                         CompletedPoints++;
                     }
                     catch
@@ -109,6 +112,22 @@ public class ModelWriter
     private void WriteResultsForPoint(StreamWriter writer, Dictionary<string, object> results)
     {
         writer.WriteLine(string.Join("\t", results.Values));
+    }
+
+    private void WriteStatus(StreamWriter writer, Dictionary<string, Sheet> sheets)
+    {
+        foreach(var sheet in sheets)
+        {
+            string sheetName = sheet.Key;
+            Dictionary<(string, int), int> cellCalls = sheet.Value.CircularReferenceDetector.GetMethodCalls();
+
+            foreach (var cellCall in cellCalls)
+            {
+                writer.WriteLine(sheetName + "\t" + cellCall.Key.Item1 + "\t" + cellCall.Key.Item2);
+            }
+        }
+
+
     }
 
     private void WriteError(StreamWriter writer, List<object> point)

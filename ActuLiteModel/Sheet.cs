@@ -33,8 +33,6 @@ namespace ActuLiteModel
                 throw new CircularReferenceException($"스택이 4096을 초과 하였습니다. 순환식을 효율적으로 수정해야 합니다. 현재 스택: {CircularReferenceDetector.GetCallStackString()} ");
             }
 
-            if (t < 0) return 0;
-
             if (!_cache.TryGetValue(cellName, out var cellCache))
             {
                 cellCache = new Dictionary<int, double>();
@@ -45,6 +43,8 @@ namespace ActuLiteModel
             {
                 return cachedValue;
             }
+
+            if (t < 0) return 0;
 
             try
             {

@@ -8,7 +8,7 @@
 
     <DockPanel>
         <!-- 글로벌 네비게이션 바 -->
-        <ContentControl Content="{StaticResource GlobalNavigationBar}" DockPanel.Dock="Top"/>
+        <ContentControl x:Name="GlobalNavBarControl" Content="{StaticResource GlobalNavigationBar}" DockPanel.Dock="Top"/>
 
         <!-- StatusBar 추가 -->
         <StatusBar DockPanel.Dock="Bottom" Height="23">

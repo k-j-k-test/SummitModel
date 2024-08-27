@@ -162,6 +162,33 @@ namespace ActuLiteModel
 
         public static int Min(params int[] vals) => vals.Min();
 
+        public static double Round(double number, int digt)
+        {
+            if(digt > 10)
+            {
+                digt = 10;
+            }
+
+            return Math.Round(Math.Round(number, 10), digt);
+        }
+
+        public static double RoundUp(double number, int digt)
+        {
+            double n = Math.Pow(10.0, digt);
+            return Math.Ceiling(number * n) / n;
+        }
+
+        public static double RoundDown(double number, int digt)
+        {
+            double n = Math.Pow(10.0, digt);
+            return Math.Floor(number * n) / n;
+        }
+
+        public static double RoundA(double number, double SA)
+        {
+            return Math.Round(number * SA) / SA;
+        }
+
         public static double Value(object var)
         {
             if (var.GetType() == typeof(DateTime))

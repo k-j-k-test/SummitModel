@@ -11,10 +11,13 @@ public class ModelWriter
     private readonly ModelEngine _modelEngine;
     private readonly DataExpander _dataExpander;
     public Dictionary<string, Dictionary<string, IDynamicExpression>> CompiledExpressions { get; private set; }
+    public bool IsCanceled = false;
 
     public int TotalPoints { get; set; }
     public int CompletedPoints { get; set; }
     public int ErrorPoints { get; set; }
+    public string StatusMessage { get; private set; }
+    public Queue<string> StatusQueue { get; set; }
 
     public ModelWriter(ModelEngine modelEngine, DataExpander dataExpander)
     {
@@ -35,15 +38,24 @@ public class ModelWriter
                 outputWriter.WriteLine(string.Join("\t", tableExpressions.Keys));
             }
 
+
+            int ModelPointGroupCnt = _modelEngine.ModelPoints.Count;
+            int CurrentModelPointCnt = 0;
+            StatusQueue = new Queue<string>();
+
             foreach (var modelPoint in _modelEngine.ModelPoints)
             {
                 var expandedPoints = _dataExpander.ExpandData(modelPoint).ToList();
+                int CurrentModelExpandedPointCnt = expandedPoints.Count();
+                CurrentModelPointCnt++;
 
                 foreach (var point in expandedPoints)
                 {
                     try
                     {
-                        foreach(Model model in  _modelEngine.Models.Values)
+                        if(IsCanceled) { return; }
+
+                        foreach (Model model in _modelEngine.Models.Values)
                         {
                             model.Clear();
                         }
@@ -53,8 +65,6 @@ public class ModelWriter
                         var results = CalculateResults(tableName);
                         WriteResultsForPoint(outputWriter, results);
 
-                        //WriteStatus(outputWriter, _modelEngine.Models["PV"].Sheets);
-
                         CompletedPoints++;
                     }
                     catch
@@ -62,7 +72,15 @@ public class ModelWriter
                         WriteError(errorWriter, point);
                         ErrorPoints++;
                     }
+                    finally
+                    {
+                        StatusMessage = $"진행단계: {CurrentModelPointCnt}/{ModelPointGroupCnt}, 완료:{CompletedPoints + ErrorPoints}/{CurrentModelExpandedPointCnt}, 오류:{ErrorPoints}";
+                    }
                 }
+
+                CompletedPoints = 0;
+                ErrorPoints = 0;
+                StatusQueue.Enqueue(StatusMessage);
             }
         }
     }

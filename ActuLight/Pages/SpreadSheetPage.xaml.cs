@@ -31,6 +31,8 @@ namespace ActuLight.Pages
         private string selectedModel;
         private string selectedCell;
 
+        private bool _areFoldingsCollapsed = false;
+
         private MatchCollection cellMatches;
         private List<(string CellName, int T)> invokeList;
 
@@ -59,9 +61,14 @@ namespace ActuLight.Pages
             ScriptEditor.Options.HighlightCurrentLine = true;
             ScriptEditor.Options.AllowScrollBelowDocument = true;
 
-            // Ctrl+S 키 이벤트 처리를 위한 핸들러 추가
-            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
+            // 마우스 우클릭 이벤트 처리를 위한 핸들러 추가
             ModelsList.MouseRightButtonUp += ModelsList_MouseRightButtonUp;
+
+            // Ctrl 키 이벤트 처리를 위한 핸들러 추가
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Folding;
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Region;
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Zoom;
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
@@ -645,21 +652,6 @@ namespace ActuLight.Pages
             SyntaxHighlighter.UpdateAssumptions(App.ModelEngine.Assumptions.Keys);
         }
 
-        private void ScriptEditor_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
-                ScriptEditor_TextChanged("save", null);
-
-                Scripts[selectedModel] = ScriptEditor.Text;
-
-                // MainWindow의 SaveExcelFile 메서드 호출
-                var mainWindow = Application.Current.MainWindow as MainWindow;
-                mainWindow?.SaveExcelFile();
-            }
-        }
-
         private void ViewInExcel_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -820,6 +812,94 @@ namespace ActuLight.Pages
 
                 UpdateSyntaxHighlighter();
             }
+        }
+
+        private void ScriptEditor_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
+                ScriptEditor_TextChanged("save", null);
+
+                Scripts[selectedModel] = ScriptEditor.Text;
+
+                // MainWindow의 SaveExcelFile 메서드 호출
+                var mainWindow = Application.Current.MainWindow as MainWindow;
+                mainWindow?.SaveExcelFile();
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Region(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                var document = ScriptEditor.Document;
+                var offset = ScriptEditor.CaretOffset;
+                var line = document.GetLineByOffset(offset);
+                var lineText = document.GetText(line.Offset, line.Length);
+                var indent = new string(' ', lineText.TakeWhile(char.IsWhiteSpace).Count());
+
+                var region = $"{indent}#region New Region\n{indent}\n{indent}#endregion";
+                document.Insert(line.Offset, region);
+
+                ScriptEditor.Select(line.Offset + indent.Length + 8, 10); // Select "New Region"
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Folding(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                ToggleAllFoldings();
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Zoom(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                switch (e.Key)
+                {
+                    case Key.OemPlus:
+                    case Key.Add:
+                        e.Handled = true;
+                        AdjustScriptEditorFontSize(true);
+                        break;
+
+                    case Key.OemMinus:
+                    case Key.Subtract:
+                        e.Handled = true;
+                        AdjustScriptEditorFontSize(false);
+                        break;
+                }
+            }
+        }  
+
+        private void ToggleAllFoldings()
+        {
+            if (FoldingManager == null) return;
+
+            _areFoldingsCollapsed = !_areFoldingsCollapsed;
+
+            foreach (var folding in FoldingManager.AllFoldings)
+            {
+                folding.IsFolded = _areFoldingsCollapsed;
+            }
+
+            ScriptEditor.TextArea.TextView.Redraw();
+        }
+
+        private void AdjustScriptEditorFontSize(bool increase)
+        {
+            double currentSize = ScriptEditor.FontSize;
+            double newSize = increase ? currentSize + 1 : currentSize - 1;
+
+            // 최소 8pt, 최대 24pt로 제한
+            newSize = Math.Max(8, Math.Min(24, newSize));
+
+            ScriptEditor.FontSize = newSize;
         }
     }
 
@@ -1003,5 +1083,4 @@ namespace ActuLight.Pages
             Loaded += (sender, e) => answerTextBox.Focus();
         }
     }
-
 }

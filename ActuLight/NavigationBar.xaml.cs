@@ -19,6 +19,10 @@ namespace ActuLight
     /// </summary>
     public partial class NavigationBar : UserControl
     {
+        private static NavigationBar _instance;
+
+        public static NavigationBar Instance => _instance ??= new NavigationBar();
+
         public NavigationBar()
         {
             InitializeComponent();
@@ -53,5 +57,16 @@ namespace ActuLight
         {
             ((MainWindow)Window.GetWindow(this)).NavigateTo("OutputPage");
         }
+
+        public void SetButtonsEnabled(bool enabled)
+        {
+            FileButton.IsEnabled = enabled;
+            ModelPointButton.IsEnabled = enabled;
+            AssumptionButton.IsEnabled = enabled;
+            SpreadsheetButton.IsEnabled = enabled;
+            OutputButton.IsEnabled = enabled;
+            SettingsButton.IsEnabled = enabled;
+        }
+
     }
 }

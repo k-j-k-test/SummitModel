@@ -21,6 +21,8 @@ namespace ActuLight
         public Dictionary<string, Page> pageCache = new Dictionary<string, Page>();
         private string lastSavedFilePath;
 
+
+
         public MainWindow()
         {
             InitializeComponent();
@@ -35,6 +37,9 @@ namespace ActuLight
             NavigateTo("FilePage");
 
             Application.Current.MainWindow.InvalidateVisual();
+
+            var globalNavBar = GlobalNavBarControl.Content as NavigationBar;
+
         }
 
         private void Window_ContentRendered(object sender, EventArgs e)
@@ -140,6 +145,10 @@ namespace ActuLight
                     if (filePage.excelData.ContainsKey("assum"))
                     {
                         sheets["assum"] = filePage.excelData["assum"];
+                    }
+                    if (filePage.excelData.ContainsKey("out"))
+                    {
+                        sheets["out"] = filePage.excelData["out"];
                     }
                 }
 

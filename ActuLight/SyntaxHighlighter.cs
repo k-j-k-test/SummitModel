@@ -613,7 +613,6 @@ namespace ActuLight
         public object Description => null;
         public double Priority => 0;
 
-
         private TextBlock CreateTextBlock()
         {
             var theme = ThemeManager.Current.ActualApplicationTheme;
@@ -685,51 +684,58 @@ namespace ActuLight
 
         public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
         {
-            string lineText = GetCurrentLineText(textArea, completionSegment);
-            string textBeforeCaret = lineText.Substring(0, completionSegment.EndOffset - textArea.Document.GetLineByOffset(completionSegment.Offset).Offset);
-            string textAfterCaret = lineText.Substring(completionSegment.EndOffset - textArea.Document.GetLineByOffset(completionSegment.Offset).Offset);
-
-            string insertText = Text;
-
-            switch (CompletionType)
+            try
             {
-                case CompletionType.CellReference:
-                    insertText = CompleteCellReference(textBeforeCaret, textAfterCaret);
-                    break;
-                case CompletionType.Function:
-                    insertText = CompleteFunctionCall();
-                    break;
-                case CompletionType.Model:
-                    insertText = CompleteModelReference(textBeforeCaret, textAfterCaret);
-                    break;
-                case CompletionType.Assumption:
-                    insertText = Text;
-                    break;
-                case CompletionType.CellAutoCompletion:
-                    insertText = CompleteCellDefinition(lineText);
-                    break;
-            }
+                string lineText = GetCurrentLineText(textArea, completionSegment);
+                string textBeforeCaret = lineText.Substring(0, completionSegment.EndOffset - textArea.Document.GetLineByOffset(completionSegment.Offset).Offset);
+                string textAfterCaret = lineText.Substring(completionSegment.EndOffset - textArea.Document.GetLineByOffset(completionSegment.Offset).Offset);
 
-            ReplaceText(textArea, completionSegment, insertText);
+                string insertText = Text;
 
-            // 커서 위치 조정
-            if (CompletionType == CompletionType.Function)
-            {
-                if (Text == "Assum")
+                switch (CompletionType)
                 {
-                    textArea.Caret.Offset -= 5;
+                    case CompletionType.CellReference:
+                        insertText = CompleteCellReference(textBeforeCaret, textAfterCaret);
+                        break;
+                    case CompletionType.Function:
+                        insertText = CompleteFunctionCall();
+                        break;
+                    case CompletionType.Model:
+                        insertText = CompleteModelReference(textBeforeCaret, textAfterCaret);
+                        break;
+                    case CompletionType.Assumption:
+                        insertText = Text;
+                        break;
+                    case CompletionType.CellAutoCompletion:
+                        insertText = CompleteCellDefinition(lineText);
+                        break;
                 }
-                else
-                {
-                    textArea.Caret.Offset -= 1;
-                }               
-            }
 
-            if (CompletionType == CompletionType.ContextVariable || CompletionType == CompletionType.Assumption)
+                ReplaceText(textArea, completionSegment, insertText);
+
+                // 커서 위치 조정
+                if (CompletionType == CompletionType.Function)
+                {
+                    if (Text == "Assum")
+                    {
+                        textArea.Caret.Offset -= 5;
+                    }
+                    else
+                    {
+                        textArea.Caret.Offset -= 1;
+                    }
+                }
+
+                if (CompletionType == CompletionType.ContextVariable || CompletionType == CompletionType.Assumption)
+                {
+                    //캐럿 초기화로 자동완성창 다시실행 차단
+                    textArea.Caret.Offset -= lineText.Length-1;
+                    textArea.Caret.Offset += lineText.Length-1;
+                }
+            }
+            catch
             {
-                //캐럿 초기화로 자동완성창 다시실행 차단
-                textArea.Caret.Offset -= lineText.Length;
-                textArea.Caret.Offset += lineText.Length;
+
             }
 
         }

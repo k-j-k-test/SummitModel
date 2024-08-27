@@ -4,12 +4,12 @@
              xmlns:local="clr-namespace:ActuLight">
     <Border Padding="10">
         <StackPanel Orientation="Horizontal">
-            <Button Content="파일" Margin="0,0,5,0" Click="FileButton_Click"/>
-            <Button Content="모델포인트" Margin="0,0,5,0" Click="ModelPointButton_Click"/>
-            <Button Content="가정" Margin="0,0,5,0" Click="AssumptionButton_Click"/>
-            <Button Content="스프레드시트" Margin="0,0,5,0" Click="SpreadsheetButton_Click"/>
-            <Button Content="출력" Margin="0,0,5,0" Click="OutputButton_Click"/>
-            <Button Content="설정" Margin="0,0,5,0" Click="SettingsButton_Click"/>
+            <Button x:Name="FileButton" Content="파일" Margin="0,0,5,0" Click="FileButton_Click"/>
+            <Button x:Name="ModelPointButton" Content="모델포인트" Margin="0,0,5,0" Click="ModelPointButton_Click"/>
+            <Button x:Name="AssumptionButton" Content="가정" Margin="0,0,5,0" Click="AssumptionButton_Click"/>
+            <Button x:Name="SpreadsheetButton" Content="스프레드시트" Margin="0,0,5,0" Click="SpreadsheetButton_Click"/>
+            <Button x:Name="OutputButton" Content="출력" Margin="0,0,5,0" Click="OutputButton_Click"/>
+            <Button x:Name="SettingsButton" Content="설정" Margin="0,0,5,0" Click="SettingsButton_Click"/>
         </StackPanel>
     </Border>
 </UserControl>

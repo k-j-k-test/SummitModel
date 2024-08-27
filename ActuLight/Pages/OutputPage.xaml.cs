@@ -73,50 +73,28 @@ namespace ActuLight.Pages
             }
         }
 
-        private void DataGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
-        {
-            if (e.Column.Header.ToString() == "Value")
-            {
-                var editedItem = (KeyValuePair<string, string>)e.Row.Item;
-                var newValue = (e.EditingElement as TextBox).Text;
-
-                try
-                {
-                    var tabItem = (TabItem)OutputTabControl.SelectedItem;
-                    var tableName = tabItem.Header.ToString();
-                    var columnName = editedItem.Key;
-
-                    var transformedValue = ModelEngine.TransformText(newValue, "DummyModel");
-                    _modelWriter.CompiledExpressions[tableName][columnName] = App.ModelEngine.Context.CompileDynamic(transformedValue);
-
-                    e.Row.Background = Brushes.White;
-                }
-                catch
-                {
-                    e.Row.Background = Brushes.Red;
-                }
-            }
-        }
-
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
             _startTime = DateTime.Now;
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
             _timer.Tick += Timer_Tick;
             _timer.Start();
-
-            _modelWriter.TotalPoints = App.ModelEngine.ModelPoints.Count;
-            _modelWriter.CompletedPoints = 0;
-            _modelWriter.ErrorPoints = 0;
             _isCancelled = false;
+            _modelWriter.IsCanceled = false;
 
+            EnableButtons(false);
+
+            ProgressRichTextBox.AppendText($"■ 시작 {DateTime.Now} " + "\r\n");
             await Task.Run(() => WriteResults());
+            ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {(DateTime.Now - _startTime).ToString(@"hh\:mm\:ss")} " + "\r\n" + "\r\n");
+
+            EnableButtons(true);
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
             _isCancelled = true;
-            UpdateProgressRichTextBox();
+            _modelWriter.IsCanceled = true;
         }
 
         private void WriteResults()
@@ -141,18 +119,34 @@ namespace ActuLight.Pages
             Dispatcher.Invoke(() =>
             {
                 TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss\\.ff}";
-                TotalPointsLabel.Text = $"전체 건수: {_modelWriter.TotalPoints}";
-                CompletedPointsLabel.Text = $"완료 건수: {_modelWriter.CompletedPoints}";
-                ErrorPointsLabel.Text = $"오류 건수: {_modelWriter.ErrorPoints}";
-                ProgressLabel.Text = $"진행 상황: {((_modelWriter.CompletedPoints + _modelWriter.ErrorPoints) * 100.0 / _modelWriter.TotalPoints):F2}%";
+                ProgressLabel.Text = _modelWriter.StatusMessage;
+
+                if(_modelWriter.StatusQueue.Count > 0 )
+                {
+                    ProgressRichTextBox.AppendText("- " + _modelWriter.StatusQueue.Dequeue() + "\r\n");
+                }
             });
         }
 
         private void UpdateProgressRichTextBox()
         {
-            string progressInfo = $"{ProgressLabel.Text}\n{TimeLabel.Text}\n{TotalPointsLabel.Text}\n{CompletedPointsLabel.Text}\n{ErrorPointsLabel.Text}\n\n";
-            ProgressRichTextBox.AppendText(progressInfo);
+            ProgressLabel.Text = _modelWriter.StatusMessage;
+            while (_modelWriter.StatusQueue.Count > 0)
+            {
+                ProgressRichTextBox.AppendText("- " + _modelWriter.StatusQueue.Dequeue() + "\r\n");
+            }
             ProgressRichTextBox.ScrollToEnd();
+        }
+
+        private void EnableButtons(bool enabled)
+        {
+            var mainWindow = (MainWindow)Application.Current.MainWindow;
+            NavigationBar navigationBar = mainWindow.GlobalNavBarControl.Content as NavigationBar;
+            navigationBar.SetButtonsEnabled(enabled);
+
+            // OutputPage의 버튼들 활성화
+            LoadDataButton.IsEnabled = enabled;
+            StartButton.IsEnabled = enabled;
         }
 
     }

@@ -46,6 +46,9 @@
                 <Button Content="선택한 항목 삭제" Click="DeleteSelectedFileButton_Click" Margin="5,0,0,0"/>
             </StackPanel>
 
+            <!-- Auto Sync Checkbox -->
+            <CheckBox Grid.Row="3" Content="자동 동기화" x:Name="AutoSyncCheckBox" Checked="AutoSyncCheckBox_Checked" Unchecked="AutoSyncCheckBox_Unchecked" Margin="10,0,10,10"/>
+            
             <!-- Version Info and Update Link -->
             <StackPanel Margin="0,20,0,0">
                 <TextBlock x:Name="VersionInfoTextBlock"/>

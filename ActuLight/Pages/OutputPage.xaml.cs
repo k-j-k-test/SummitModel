@@ -22,9 +22,12 @@ namespace ActuLight.Pages
         public OutputPage()
         {
             InitializeComponent();
+
+            StartButton.IsEnabled = false;
+            CancelButton.IsEnabled = false;
         }
 
-        private void LoadData_Click(object sender, RoutedEventArgs e)
+        public void LoadData_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -38,10 +41,13 @@ namespace ActuLight.Pages
                 _modelWriter = new ModelWriter(App.ModelEngine, new DataExpander(App.ModelEngine.ModelPointInfo.Types, App.ModelEngine.ModelPointInfo.Headers));
                 _modelWriter.LoadTableData(filePage.excelData["out"]);
                 PopulateTabControl();
+
+                StartButton.IsEnabled = true;
+                CancelButton.IsEnabled = true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"데이터 로드 중 오류가 발생했습니다: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"데이터 로드 중 오류가 발생했습니다: \n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -55,7 +61,8 @@ namespace ActuLight.Pages
                 var dataGrid = new DataGrid
                 {
                     AutoGenerateColumns = false,
-                    IsReadOnly = true
+                    IsReadOnly = true,
+                    CanUserSortColumns = false
                 };
 
                 dataGrid.Columns.Add(new DataGridTextColumn { Header = "ColumnName", Binding = new System.Windows.Data.Binding("Key") });
@@ -71,24 +78,35 @@ namespace ActuLight.Pages
                 tabItem.Content = dataGrid;
                 OutputTabControl.Items.Add(tabItem);
             }
+
+            OutputTabControl.SelectedIndex = 0;
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
-            _startTime = DateTime.Now;
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
-            _timer.Tick += Timer_Tick;
-            _timer.Start();
-            _isCancelled = false;
-            _modelWriter.IsCanceled = false;
+            try
+            {
+                _modelWriter.IsCanceled = false;
+                _isCancelled = false;
 
-            EnableButtons(false);
+                _startTime = DateTime.Now;
+                _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                _timer.Tick += Timer_Tick;
+                _timer.Start();
 
-            ProgressRichTextBox.AppendText($"■ 시작 {DateTime.Now} " + "\r\n");
-            await Task.Run(() => WriteResults());
-            ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {(DateTime.Now - _startTime).ToString(@"hh\:mm\:ss")} " + "\r\n" + "\r\n");
+                EnableButtons(false);
 
-            EnableButtons(true);
+                ProgressRichTextBox.AppendText($"■ 시작 {DateTime.Now} " + "\r\n");
+                await Task.Run(() => WriteResults());
+                ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {(DateTime.Now - _startTime).ToString(@"hh\:mm\:ss")} " + "\r\n" + "\r\n");
+
+                EnableButtons(true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("오류가 발생했습니다. 출력 데이터가 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -109,7 +127,6 @@ namespace ActuLight.Pages
             {
                 _timer.Stop();
                 UpdateProgressRichTextBox();
-                MessageBox.Show(_isCancelled ? "작업이 취소되었습니다." : "작업이 완료되었습니다.");
             });
         }
 

@@ -24,7 +24,7 @@ namespace ActuLight.Pages
 
         private const string RecentFilesPath = "recentFiles.json";
         private ObservableCollection<RecentFile> recentFiles = new ObservableCollection<RecentFile>();
-        private string currentFilePath;
+        public string currentFilePath;
         private DateTime currentFileLastWriteTime;
         private DispatcherTimer fileCheckTimer;
         private bool isAutoSync = false;
@@ -102,29 +102,52 @@ namespace ActuLight.Pages
                     }
 
                     // ModelPointPage의 LoadDataAsync 메서드 호출
-                    //ModelPointPage modelPointPage = null;
-                    if (mainWindow.pageCache.TryGetValue("Pages/ModelPointPage.xaml", out Page modelPointPage))
+                    string ModelPointPageDir = "Pages/ModelPointPage.xaml";
+                    if (mainWindow.pageCache.TryGetValue(ModelPointPageDir, out Page modelPointPage))
                     {
                         await (modelPointPage as ModelPointPage).LoadDataAsync();
                     }
                     else
                     {
-                        mainWindow.pageCache["Pages/ModelPointPage.xaml"] = new ModelPointPage();
-                        await (mainWindow.pageCache["Pages/ModelPointPage.xaml"] as ModelPointPage).LoadDataAsync();
+                        mainWindow.pageCache[ModelPointPageDir] = new ModelPointPage();
+                        await (mainWindow.pageCache[ModelPointPageDir] as ModelPointPage).LoadDataAsync();
                     }
-                    
 
                     // AssumptionPage의 LoadDataAsync 메서드 호출
-                    //AssumptionPage assumptionPage = null;
-                    if (mainWindow.pageCache.TryGetValue("Pages/AssumptionPage.xaml", out Page assumptionPage))
+                    string AssumptionPageDir = "Pages/AssumptionPage.xaml";
+                    if (mainWindow.pageCache.TryGetValue(AssumptionPageDir, out Page assumptionPage))
                     {
-                        (assumptionPage as AssumptionPage).LoadDataAsync();
+                        await (assumptionPage as AssumptionPage).LoadDataAsync();
                     }
                     else
                     {
-                        mainWindow.pageCache["Pages/AssumptionPage.xaml"] = new AssumptionPage();
-                        (mainWindow.pageCache["Pages/AssumptionPage.xaml"] as AssumptionPage).LoadDataAsync();
+                        mainWindow.pageCache[AssumptionPageDir] = new AssumptionPage();
+                        await (mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
                     }
+
+                    //// SpreadSheetPage의 LoadDataAsync 메서드 호출
+                    //string SpreadSheetPageDir = "Pages/SpreadSheetPage.xaml";
+                    //if (mainWindow.pageCache.TryGetValue(SpreadSheetPageDir, out Page spreadSheetPage))
+                    //{
+                    //    await (spreadSheetPage as SpreadSheetPage).LoadDataAsync();
+                    //}
+                    //else
+                    //{
+                    //    mainWindow.pageCache[SpreadSheetPageDir] = new SpreadSheetPage();
+                    //    await (mainWindow.pageCache[SpreadSheetPageDir] as SpreadSheetPage).LoadDataAsync();
+                    //}
+
+                    //// OutputPage의 LoadDataAsync 메서드 호출
+                    //string OutputPageDir = "Pages/OutputPage.xaml";
+                    //if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
+                    //{
+                    //    (outputPage as OutputPage).LoadData_Click(null, null);
+                    //}
+                    //else
+                    //{
+                    //    mainWindow.pageCache[OutputPageDir] = new OutputPage();
+                    //    (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
+                    //}
 
                     MessageBox.Show("모든 데이터가 성공적으로 로드되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -230,8 +253,6 @@ namespace ActuLight.Pages
             }
             SaveRecentFiles();
         }
-
-
 
         private void SaveRecentFiles()
         {

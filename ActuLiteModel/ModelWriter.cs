@@ -93,7 +93,7 @@ public class ModelWriter
         for (int i = 1; i < excelData.Count; i++)
         {
             var row = excelData[i];
-            if(row.Any(x => x == null))
+            if (row.Any(x => x == null))
             {
                 continue;
             }
@@ -107,8 +107,15 @@ public class ModelWriter
                 CompiledExpressions[tableName] = new Dictionary<string, IDynamicExpression>();
             }
 
-            var transformedValue = ModelEngine.TransformText(value, "DummyModel");
-            CompiledExpressions[tableName][columnName] = _modelEngine.Context.CompileDynamic(transformedValue);
+            try
+            {
+                var transformedValue = ModelEngine.TransformText(value, "DummyModel");
+                CompiledExpressions[tableName][columnName] = _modelEngine.Context.CompileDynamic(transformedValue);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Compile Error - TableName: {tableName}, ColumnName: {columnName}");
+            }
         }
     }
 

@@ -73,17 +73,17 @@ namespace ActuLight.Pages
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
 
-        private async Task LoadDataAsync()
+        public async Task LoadDataAsync()
         {
             LoadingOverlay.Visibility = Visibility.Visible;
             try
             {
+                Models.Clear();
+                Scripts.Clear();
+
                 var filePage = ((MainWindow)Application.Current.MainWindow).pageCache["Pages/FilePage.xaml"] as FilePage;
                 if (filePage?.excelData != null)
                 {
-                    Scripts.Clear();
-                    Models.Clear();
-
                     foreach (var sheetPair in filePage.excelData)
                     {
                         string sheetName = sheetPair.Key;
@@ -120,6 +120,22 @@ namespace ActuLight.Pages
                         ModelsList.ItemsSource = Models.Keys.ToList();
                         UpdateSyntaxHighlighter();
                     });
+
+                    // 컴파일 실행
+                    selectedModel = null;
+                    for (int i = Models.Count - 1; i >= 0; i--)
+                    {
+                        string modelName = Models.Keys.ToList()[i];
+                        string script = Scripts[modelName];
+
+                        selectedModel = modelName;
+                        ModelsList.SelectedIndex = i;
+                        Scripts[modelName] = script;
+                        ScriptEditor.Text = script;
+                        await ProcessTextChangeInternal(Scripts[modelName]); 
+                    }
+
+
                     MessageBox.Show("데이터를 성공적으로 불러왔습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
@@ -815,17 +831,25 @@ namespace ActuLight.Pages
         }
 
         private void ScriptEditor_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
+        {         
             if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
-                ScriptEditor_TextChanged("save", null);
+                try
+                {
+                    e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
+                    ScriptEditor_TextChanged("save", null);
 
-                Scripts[selectedModel] = ScriptEditor.Text;
+                    Scripts[selectedModel] = ScriptEditor.Text;
 
-                // MainWindow의 SaveExcelFile 메서드 호출
-                var mainWindow = Application.Current.MainWindow as MainWindow;
-                mainWindow?.SaveExcelFile();
+                    // MainWindow의 SaveExcelFile 메서드 호출
+                    var mainWindow = Application.Current.MainWindow as MainWindow;
+                    mainWindow?.SaveExcelFile();
+                }
+                catch
+                {
+
+                }
+
             }
         }
 
@@ -833,17 +857,24 @@ namespace ActuLight.Pages
         {
             if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                e.Handled = true;
-                var document = ScriptEditor.Document;
-                var offset = ScriptEditor.CaretOffset;
-                var line = document.GetLineByOffset(offset);
-                var lineText = document.GetText(line.Offset, line.Length);
-                var indent = new string(' ', lineText.TakeWhile(char.IsWhiteSpace).Count());
+                try
+                {
+                    e.Handled = true;
+                    var document = ScriptEditor.Document;
+                    var offset = ScriptEditor.CaretOffset;
+                    var line = document.GetLineByOffset(offset);
+                    var lineText = document.GetText(line.Offset, line.Length);
+                    var indent = new string(' ', lineText.TakeWhile(char.IsWhiteSpace).Count());
 
-                var region = $"{indent}#region New Region\n{indent}\n{indent}#endregion";
-                document.Insert(line.Offset, region);
+                    var region = $"{indent}#region New Region\n{indent}\n{indent}#endregion";
+                    document.Insert(line.Offset, region);
 
-                ScriptEditor.Select(line.Offset + indent.Length + 8, 10); // Select "New Region"
+                    ScriptEditor.Select(line.Offset + indent.Length + 8, 10); // Select "New Region"
+                }
+                catch
+                {
+
+                }
             }
         }
 
@@ -851,8 +882,15 @@ namespace ActuLight.Pages
         {
             if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                e.Handled = true;
-                ToggleAllFoldings();
+                try
+                {
+                    e.Handled = true;
+                    ToggleAllFoldings();
+                }
+                catch
+                {
+
+                }
             }
         }
 
@@ -860,20 +898,28 @@ namespace ActuLight.Pages
         {
             if (Keyboard.Modifiers == ModifierKeys.Control)
             {
-                switch (e.Key)
+                try
                 {
-                    case Key.OemPlus:
-                    case Key.Add:
-                        e.Handled = true;
-                        AdjustScriptEditorFontSize(true);
-                        break;
+                    switch (e.Key)
+                    {
+                        case Key.OemPlus:
+                        case Key.Add:
+                            e.Handled = true;
+                            AdjustScriptEditorFontSize(true);
+                            break;
 
-                    case Key.OemMinus:
-                    case Key.Subtract:
-                        e.Handled = true;
-                        AdjustScriptEditorFontSize(false);
-                        break;
+                        case Key.OemMinus:
+                        case Key.Subtract:
+                            e.Handled = true;
+                            AdjustScriptEditorFontSize(false);
+                            break;
+                    }
                 }
+                catch
+                {
+
+                }
+
             }
         }  
 
@@ -928,8 +974,14 @@ namespace ActuLight.Pages
 
         private string FormatToSignificantDigits(double value, int significantDigits)
         {
+            if (double.IsNaN(value))
+                return "NaN";
+
             if (value == 0)
                 return "0";
+
+            if (double.IsInfinity(value))
+                return value > 0 ? "Infinity" : "-Infinity";
 
             // 값의 절대값을 취하고 지수 표기법으로 변환
             string scientificNotation = Math.Abs(value).ToString($"E{significantDigits - 1}");
@@ -939,7 +991,6 @@ namespace ActuLight.Pages
 
             // 정수 부분의 자릿수 계산
             int integerPartDigits = Math.Max(1, exponent + 1);
-
             if (integerPartDigits >= significantDigits)
             {
                 // 정수 부분이 유효숫자 이상인 경우, 정수 부분만 표시
@@ -949,15 +1000,12 @@ namespace ActuLight.Pages
             {
                 // 소수점 이하 자릿수 계산
                 int decimalPlaces = Math.Max(0, significantDigits - integerPartDigits);
-
                 // 반올림 후 문자열로 변환
                 string roundedValue = Math.Round(value, decimalPlaces).ToString($"F{decimalPlaces}");
-
                 // 끝의 불필요한 0 제거
                 roundedValue = roundedValue.TrimEnd('0');
                 if (roundedValue.EndsWith("."))
                     roundedValue = roundedValue.TrimEnd('.');
-
                 return roundedValue;
             }
         }

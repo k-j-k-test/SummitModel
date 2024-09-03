@@ -47,7 +47,7 @@ namespace ActuLight.Pages
                     var mpData = filePage.excelData["mp"];
                     types = mpData[0].Select(t => t.ToString()).ToList();
                     headers = mpData[1].Select(h => h.ToString()).ToList();
-                    originalData = mpData.Skip(2).ToList();
+                    originalData = mpData.Skip(2).Where(x => x[0] != null).ToList();
 
                     dataExpander = new DataExpander(types, headers);
 

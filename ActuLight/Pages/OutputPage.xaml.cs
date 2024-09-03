@@ -37,7 +37,13 @@ namespace ActuLight.Pages
                     throw new Exception("출력 데이터를 찾을 수 없습니다.");
                 }
 
-                _outputFolderPath = Path.GetDirectoryName(FilePage.SelectedFilePath);
+                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
+                _outputFolderPath = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Outputs");
+                if (!Directory.Exists(_outputFolderPath))
+                {
+                    Directory.CreateDirectory(_outputFolderPath);
+                }
+
                 _modelWriter = new ModelWriter(App.ModelEngine, new DataExpander(App.ModelEngine.ModelPointInfo.Types, App.ModelEngine.ModelPointInfo.Headers));
                 _modelWriter.LoadTableData(filePage.excelData["out"]);
                 PopulateTabControl();
@@ -92,6 +98,7 @@ namespace ActuLight.Pages
                 _startTime = DateTime.Now;
                 _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
                 _timer.Tick += Timer_Tick;
+                
                 _timer.Start();
 
                 EnableButtons(false);
@@ -106,7 +113,6 @@ namespace ActuLight.Pages
             {
                 MessageBox.Show("오류가 발생했습니다. 출력 데이터가 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -162,9 +168,10 @@ namespace ActuLight.Pages
             navigationBar.SetButtonsEnabled(enabled);
 
             // OutputPage의 버튼들 활성화
-            LoadDataButton.IsEnabled = enabled;
             StartButton.IsEnabled = enabled;
-        }
 
+            //자동저장기능 중지
+            FilePage.IsAutoSync = enabled;       
+        }
     }
 }

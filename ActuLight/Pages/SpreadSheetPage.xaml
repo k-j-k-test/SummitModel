@@ -16,18 +16,13 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
             <Button Content="데이터 가져오기" Click="LoadData_Click" Margin="0,0,5,0"/>
             <Button Content="엑셀로 보기" Click="ViewInExcel_Click" Margin="0,0,5,0"/>
+            <Button Content="모델포인트 보기" Click="ViewSelectedModelPoint_Click" Margin="0,0,5,0"/>
         </StackPanel>
 
         <!-- 상단 패널 -->
         <TabControl Grid.Row="1" Name="SheetTabControl">
-            <TabItem Header="Sheet1">
+            <TabItem Header="EmptySheet">
                 <DataGrid x:Name="Sheet1Grid" AutoGenerateColumns="True"/>
-            </TabItem>
-            <TabItem Header="Sheet2">
-                <DataGrid x:Name="Sheet2Grid" AutoGenerateColumns="True"/>
-            </TabItem>
-            <TabItem Header="Sheet3">
-                <DataGrid x:Name="Sheet3Grid" AutoGenerateColumns="True"/>
             </TabItem>
         </TabControl>
 

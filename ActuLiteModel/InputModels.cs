@@ -28,23 +28,7 @@ namespace ActuLiteModel
         public string TableName { get; set; }
         public string ColumnName { get; set; }
         public string Value { get; set; }
-    }
-
-    public class Input_table
-    {
-        public string Name { get; set; }
-        public string Path { get; set; }
-        public string Delimiter { get; set; }
-        public string Key { get; set; }
-        public string Type1 { get; set; }
-        public string Type2 { get; set; }
-        public string Type3 { get; set; }
-        public string Type4 { get; set; }
-        public string Type5 { get; set; }
-        public string Item1 { get; set; }
-        public string Item2 { get; set; }
-        public string Item3 { get; set; }
-        public string Item4 { get; set; }
-        public string Item5 { get; set; }
+        public string Range { get; set; }
+        public string Format { get; set; }
     }
 }

@@ -19,10 +19,13 @@ public class ModelWriter
     public string StatusMessage { get; private set; }
     public Queue<string> StatusQueue { get; set; }
 
+    private List<object> _currentSelectedPoint;
+
     public ModelWriter(ModelEngine modelEngine, DataExpander dataExpander)
     {
         _modelEngine = modelEngine;
         _dataExpander = dataExpander;
+        _currentSelectedPoint = new List<object>(_modelEngine.SelectedPoint);
     }
 
     public void WriteResults(string folderPath, string tableName)
@@ -60,8 +63,8 @@ public class ModelWriter
                             model.Clear();
                         }
 
-                        _modelEngine.SelectedPoint = point;
-                        _modelEngine.SetModelPoint();
+                        _currentSelectedPoint = point;
+                        _modelEngine.SetModelPoint(_currentSelectedPoint);
                         var results = CalculateResults(tableName);
                         WriteResultsForPoint(outputWriter, results);
 
@@ -101,6 +104,8 @@ public class ModelWriter
             var tableName = row[0].ToString();
             var columnName = row[1].ToString();
             var value = row[2].ToString();
+            var range = row[3]?.ToString() ?? "";
+            var format = row[4]?.ToString() ?? "";
 
             if (!CompiledExpressions.ContainsKey(tableName))
             {
@@ -159,4 +164,11 @@ public class ModelWriter
     {
         writer.WriteLine(string.Join(", ", point));
     }
+}
+
+public class TableColumnInfo
+{
+    public IDynamicExpression Expression { get; set; }
+    public (int Start, int End, int Count) Range { get; set; }
+    public string Format { get; set; }
 }

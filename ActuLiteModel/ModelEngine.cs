@@ -50,6 +50,16 @@ namespace ActuLiteModel
             }
         }
 
+        public void SetModelPoint(List<object> selectedPoint)
+        {
+            Context.Variables["t"] = 0;
+
+            for (int i = 0; i < ModelPointInfo.Headers.Count; i++)
+            {
+                Context.Variables[ModelPointInfo.Headers[i]] = selectedPoint[i];
+            }
+        }
+
         public void SetAssumption(List<Input_assum> assumptions)
         {
             Assumptions.Clear();
@@ -317,11 +327,12 @@ namespace ActuLiteModel
 
             using (var package = new ExcelPackage())
             {
+                // 기존 시트들 생성
                 foreach (var model in Models.Values)
                 {
                     foreach (var sheet in model.Sheets.Where(m => !m.Value.IsEmpty()))
                     {
-                        var worksheet = package.Workbook.Worksheets.Add(sheet.Key);
+                        var worksheet = package.Workbook.Worksheets.Add(sheet.Key.Replace(":", ";"));
                         var modelData = sheet.Value.GetAllData().Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
 
                         WriteHeaders(worksheet, modelData[0]);
@@ -334,9 +345,40 @@ namespace ActuLiteModel
                     }
                 }
 
+                // ModelPoint 시트 추가
+                var modelPointSheet = package.Workbook.Worksheets.Add("ModelPoint");
+                WriteSelectedModelPointInfo(modelPointSheet);
+
                 package.SaveAs(new FileInfo(fileName));
                 Console.WriteLine($"Excel 파일 저장됨: {fileName}");
             }
+        }
+
+        private void WriteSelectedModelPointInfo(ExcelWorksheet worksheet)
+        {
+            worksheet.Cells["A1"].Value = "Header";
+            worksheet.Cells["B1"].Value = "Value";
+            worksheet.Cells["C1"].Value = "Type";
+
+            worksheet.Cells["A1:C1"].Style.Font.Bold = true;
+            worksheet.Cells["A1:C1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            worksheet.Cells["A1:C1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+
+            for (int i = 0; i < ModelPointInfo.Headers.Count; i++)
+            {
+                worksheet.Cells[i + 2, 1].Value = ModelPointInfo.Headers[i];
+                worksheet.Cells[i + 2, 2].Value = SelectedPoint[i]?.ToString();
+                worksheet.Cells[i + 2, 3].Value = ModelPointInfo.Types[i];
+            }
+
+            var modelPointInfoRange = worksheet.Cells[1, 1, ModelPointInfo.Headers.Count + 1, 3];
+            modelPointInfoRange.Style.Border.BorderAround(OfficeOpenXml.Style.ExcelBorderStyle.Thin);
+            modelPointInfoRange.Style.Border.Top.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Bottom.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+
+            worksheet.Cells.AutoFitColumns();
         }
 
         public static void RunLatestExcelFile(string baseFilePath)

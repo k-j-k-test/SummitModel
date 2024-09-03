@@ -27,10 +27,10 @@ namespace ActuLight.Pages
         public string currentFilePath;
         private DateTime currentFileLastWriteTime;
         private DispatcherTimer fileCheckTimer;
-        private bool isAutoSync = false;
+        public Dictionary<string, List<List<object>>> excelData;
 
         public static string SelectedFilePath { get; private set; }
-        public Dictionary<string, List<List<object>>> excelData;
+        public static bool IsAutoSync = false;
 
         public FilePage()
         {
@@ -39,11 +39,6 @@ namespace ActuLight.Pages
             InitializeFileCheckTimer();
             RecentFilesList.ItemsSource = recentFiles;
             CheckForUpdates();
-        }
-
-        private async void SaveButton_Click(object sender, RoutedEventArgs e)
-        {
-
         }
 
         private async void LoadButton_Click(object sender, RoutedEventArgs e)
@@ -125,29 +120,17 @@ namespace ActuLight.Pages
                         await (mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
                     }
 
-                    //// SpreadSheetPage의 LoadDataAsync 메서드 호출
-                    //string SpreadSheetPageDir = "Pages/SpreadSheetPage.xaml";
-                    //if (mainWindow.pageCache.TryGetValue(SpreadSheetPageDir, out Page spreadSheetPage))
-                    //{
-                    //    await (spreadSheetPage as SpreadSheetPage).LoadDataAsync();
-                    //}
-                    //else
-                    //{
-                    //    mainWindow.pageCache[SpreadSheetPageDir] = new SpreadSheetPage();
-                    //    await (mainWindow.pageCache[SpreadSheetPageDir] as SpreadSheetPage).LoadDataAsync();
-                    //}
-
-                    //// OutputPage의 LoadDataAsync 메서드 호출
-                    //string OutputPageDir = "Pages/OutputPage.xaml";
-                    //if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
-                    //{
-                    //    (outputPage as OutputPage).LoadData_Click(null, null);
-                    //}
-                    //else
-                    //{
-                    //    mainWindow.pageCache[OutputPageDir] = new OutputPage();
-                    //    (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
-                    //}
+                    // OutputPage의 LoadDataAsync 메서드 호출
+                    string OutputPageDir = "Pages/OutputPage.xaml";
+                    if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
+                    {
+                        (outputPage as OutputPage).LoadData_Click(null, null);
+                    }
+                    else
+                    {
+                        mainWindow.pageCache[OutputPageDir] = new OutputPage();
+                        (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
+                    }
 
                     MessageBox.Show("모든 데이터가 성공적으로 로드되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -204,12 +187,12 @@ namespace ActuLight.Pages
 
         private void AutoSyncCheckBox_Checked(object sender, RoutedEventArgs e)
         {
-            isAutoSync = true;
+            IsAutoSync = true;
         }
 
         private void AutoSyncCheckBox_Unchecked(object sender, RoutedEventArgs e)
         {
-            isAutoSync = false;
+            IsAutoSync = false;
         }
 
         private void DeleteSelectedFileButton_Click(object sender, RoutedEventArgs e)
@@ -231,9 +214,9 @@ namespace ActuLight.Pages
                     UpdateStatusMessage($"주의: 파일 {currentFilePath}의 내용이 변경되었습니다.", false);
                     currentFileLastWriteTime = newLastWriteTime;
 
-                    if (isAutoSync)
+                    if (IsAutoSync)
                     {
-                        await LoadExcelFileAsync(currentFilePath);
+                        UpdateExcelData();
                     }
                 }
             }
@@ -275,6 +258,64 @@ namespace ActuLight.Pages
                     }
                 }
             }
+        }
+
+        private async void UpdateExcelData()
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
+
+            // FilePage의 LoadExcelFileAsync 메서드 호출
+            await LoadExcelFileAsync(currentFilePath);
+
+            // MainWindow 인스턴스 가져오기
+            var mainWindow = Application.Current.MainWindow as MainWindow;
+            if (mainWindow == null)
+            {
+                throw new InvalidOperationException("MainWindow를 찾을 수 없습니다.");
+            }
+
+            // ModelPointPage의 LoadDataAsync 메서드 호출
+            string ModelPointPageDir = "Pages/ModelPointPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(ModelPointPageDir, out Page modelPointPage))
+            {
+                await(modelPointPage as ModelPointPage).LoadDataAsync();
+            }
+            else
+            {
+                mainWindow.pageCache[ModelPointPageDir] = new ModelPointPage();
+                await(mainWindow.pageCache[ModelPointPageDir] as ModelPointPage).LoadDataAsync();
+            }
+
+            // AssumptionPage의 LoadDataAsync 메서드 호출
+            string AssumptionPageDir = "Pages/AssumptionPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(AssumptionPageDir, out Page assumptionPage))
+            {
+                await(assumptionPage as AssumptionPage).LoadDataAsync();
+            }
+            else
+            {
+                mainWindow.pageCache[AssumptionPageDir] = new AssumptionPage();
+                await(mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
+            }
+
+            // OutputPage의 LoadDataAsync 메서드 호출
+            string OutputPageDir = "Pages/OutputPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
+            {
+                (outputPage as OutputPage).LoadData_Click(null, null);
+            }
+            else
+            {
+                mainWindow.pageCache[OutputPageDir] = new OutputPage();
+                (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
+            }
+
+            // SpreadSheetPage의 LoadDataAsync 메서드 호출
+            string SpreadsheetPageDir = "Pages/SpreadsheetPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(SpreadsheetPageDir, out Page spreadsheetPage))
+            {
+                (spreadsheetPage as SpreadSheetPage).UpdateInvokes();
+            }         
         }
 
         private void UpdateStatusMessage(string message, bool isSuccess)

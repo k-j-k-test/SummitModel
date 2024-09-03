@@ -15,6 +15,9 @@ using System.Text;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit;
+using Microsoft.Win32;
+using System.Windows.Threading;
+
 
 namespace ActuLight.Pages
 {
@@ -36,6 +39,9 @@ namespace ActuLight.Pages
         private MatchCollection cellMatches;
         private List<(string CellName, int T)> invokeList;
 
+        private bool scriptChanged = false;
+        private DispatcherTimer autoSaveTimer;
+
         public SpreadSheetPage()
         {
             InitializeComponent();
@@ -43,6 +49,7 @@ namespace ActuLight.Pages
             ScriptEditor.TextArea.TextView.LineTransformers.Add(SyntaxHighlighter);
             UpdateSyntaxHighlighter();
             LoadSignificantDigitsSetting();
+            SetupAutoSaveTimer();
 
             // 폴딩 기능 추가
             var foldingMargin = new FoldingMargin();
@@ -65,10 +72,11 @@ namespace ActuLight.Pages
             ModelsList.MouseRightButtonUp += ModelsList_MouseRightButtonUp;
 
             // Ctrl 키 이벤트 처리를 위한 핸들러 추가
-            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown;
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Save;
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Folding;
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Region;
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Zoom;
+            ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Renew;
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
@@ -81,38 +89,30 @@ namespace ActuLight.Pages
                 Models.Clear();
                 Scripts.Clear();
 
-                var filePage = ((MainWindow)Application.Current.MainWindow).pageCache["Pages/FilePage.xaml"] as FilePage;
-                if (filePage?.excelData != null)
+                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
+                string modelsFolder = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Scripts");
+                if (!Directory.Exists(modelsFolder))
                 {
-                    foreach (var sheetPair in filePage.excelData)
-                    {
-                        string sheetName = sheetPair.Key;
-                        if (sheetName != "mp" && sheetName != "assum" && sheetName != "out")
-                        {
-                            var sheetData = sheetPair.Value;
-                            if (sheetData.Count > 0)
-                            {
-                                StringBuilder scriptBuilder = new StringBuilder();
-                                foreach (var row in sheetData)
-                                {
-                                    if (row.Count > 0)
-                                    {
-                                        if (row.Any(x => x == null))
-                                        {
-                                            scriptBuilder.AppendLine("");
-                                        }
-                                        else
-                                        {
-                                            scriptBuilder.AppendLine(row[0].ToString());
-                                        }    
-                                    }
-                                }
-                                Scripts[sheetName] = scriptBuilder.ToString().TrimEnd();
+                    Directory.CreateDirectory(modelsFolder);
+                }
 
-                                // Create a new Model for each sheet
-                                Models[sheetName] = new Model(sheetName, App.ModelEngine);
-                            }
-                        }
+                OpenFileDialog openFileDialog = new OpenFileDialog
+                {
+                    InitialDirectory = modelsFolder,
+                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                    FilterIndex = 1,
+                    RestoreDirectory = true
+                };
+
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    string json = File.ReadAllText(openFileDialog.FileName);
+                    Scripts = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
+
+                    Models.Clear();
+                    foreach (var kvp in Scripts)
+                    {
+                        Models[kvp.Key] = new Model(kvp.Key, App.ModelEngine);
                     }
 
                     await Application.Current.Dispatcher.InvokeAsync(() =>
@@ -122,25 +122,17 @@ namespace ActuLight.Pages
                     });
 
                     // 컴파일 실행
+                    ModelsList.SelectedIndex = -1;
                     selectedModel = null;
                     for (int i = Models.Count - 1; i >= 0; i--)
                     {
-                        string modelName = Models.Keys.ToList()[i];
-                        string script = Scripts[modelName];
-
-                        selectedModel = modelName;
                         ModelsList.SelectedIndex = i;
-                        Scripts[modelName] = script;
-                        ScriptEditor.Text = script;
-                        await ProcessTextChangeInternal(Scripts[modelName]); 
+                        await ProcessTextChangeInternal(Scripts[ModelsList.SelectedItem.ToString()]);
                     }
 
+                    UpdateSyntaxHighlighter();
 
                     MessageBox.Show("데이터를 성공적으로 불러왔습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    MessageBox.Show("불러올 데이터를 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -170,13 +162,21 @@ namespace ActuLight.Pages
         {
             if (ModelsList.SelectedItem is string selectedItem)
             {
+                if (e.RemovedItems.Count == 0)
+                {
+                    return;
+                }
+
+                string selectedModel_old = e.RemovedItems[0].ToString();
+                string selectedModel_new = e.AddedItems[0].ToString();
+
                 if (selectedModel != null)
                 {
-                    Scripts[selectedModel] = ScriptEditor.Text;
+                    Scripts[selectedModel_old] = ScriptEditor.Text;
                 }
                 
-                ScriptEditor.Text = Scripts.TryGetValue(selectedItem, out string script) ? script : "";
-                selectedModel = selectedItem;
+                ScriptEditor.Text = Scripts.TryGetValue(selectedModel_new, out string script) ? script : "";
+                selectedModel = selectedModel_new;
             }
         }
 
@@ -279,13 +279,10 @@ namespace ActuLight.Pages
                 if (hasInvokeChanges || hasCompiledCellChanges)
                 {
                     invokeList = newInvokeList;
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        UpdateInvokes();                                
-                        SortSheets();
-                        UpdateSheets();
-                    });
+                    UpdateInvokes();
                 }
+
+                scriptChanged = true;
             }
             catch(Exception ex) 
             {
@@ -431,6 +428,11 @@ namespace ActuLight.Pages
 
                     // CellStatusTextBlock 업데이트
                     CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
+                }
+                finally
+                {
+                    SortSheets();
+                    UpdateSheets();
                 }
             }
             else
@@ -672,23 +674,23 @@ namespace ActuLight.Pages
         {
             try
             {
-                string selectedFilePath = FilePage.SelectedFilePath;
-                if (string.IsNullOrEmpty(selectedFilePath))
+                string excelFilePath = FilePage.SelectedFilePath;
+                if (string.IsNullOrEmpty(excelFilePath))
                 {
                     MessageBox.Show("먼저 FilePage에서 파일을 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                string directory = Path.GetDirectoryName(selectedFilePath);
-                string fileName = Path.GetFileNameWithoutExtension(selectedFilePath);
-                string samplesDirectory = Path.Combine(directory, "Samples");
+                string directory = Path.GetDirectoryName(excelFilePath);
+                string fileName = Path.GetFileNameWithoutExtension(excelFilePath);
+                string samplesDirectory = Path.Combine(directory, @$"Data_{fileName}\Samples");
 
                 if (!Directory.Exists(samplesDirectory))
                 {
                     Directory.CreateDirectory(samplesDirectory);
                 }
 
-                string filePath = Path.Combine(samplesDirectory, $"Sample.xlsx");
+                string filePath = Path.Combine(samplesDirectory, $"Sample_{fileName}.xlsx");
 
                 // Models가 이미 정렬되어 있으므로, 그대로 SaveSampleToExcel 메서드에 전달
                 App.ModelEngine.SaveSampleToExcel(filePath);
@@ -730,16 +732,32 @@ namespace ActuLight.Pages
             var result = MessageBox.Show($"정말로 '{modelName}' 모델을 삭제하시겠습니까?", "모델 삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (result == MessageBoxResult.Yes)
             {
+                var modelsList = ModelsList.ItemsSource as List<string>;
+                int currentIndex = modelsList.IndexOf(modelName);
+                modelsList.Remove(modelName);
+
                 Models.Remove(modelName);
                 Scripts.Remove(modelName);
 
-                var modelsList = ModelsList.ItemsSource as List<string>;
-                modelsList.Remove(modelName);
-                ModelsList.ItemsSource = null;
-                ModelsList.ItemsSource = modelsList;
+                if (modelsList.Count > 0)
+                {
+                    int newIndex = Math.Min(currentIndex, modelsList.Count - 1);
+                    selectedModel = modelsList[newIndex];
+                    ModelsList.ItemsSource = null;
+                    ModelsList.ItemsSource = modelsList;
+                    ModelsList.SelectedIndex = newIndex;
 
-                ScriptEditor.Text = "";
-                CellsList.ItemsSource = null;
+                    ScriptEditor.Text = Scripts[selectedModel];
+                    UpdateCellList(selectedModel);
+                }
+                else
+                {
+                    selectedModel = null;
+                    ModelsList.ItemsSource = null;
+                    ScriptEditor.Text = "";
+                    CellsList.ItemsSource = null;
+                }
+
                 UpdateSyntaxHighlighter();
             }
         }
@@ -830,26 +848,126 @@ namespace ActuLight.Pages
             }
         }
 
-        private void ScriptEditor_PreviewKeyDown(object sender, KeyEventArgs e)
-        {         
+        public void SaveScripts(bool IsAuto)
+        {
+            try
+            {
+                Scripts[selectedModel] = ScriptEditor.Text;
+
+                string excelFilePath = FilePage.SelectedFilePath;
+                if (string.IsNullOrEmpty(excelFilePath))
+                {
+                    if (!IsAuto)
+                    {
+                        MessageBox.Show("먼저 엑셀 파일을 선택해주세요.", "파일 선택 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    return;
+                }
+
+                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
+                string modelsFolder = Path.Combine(Path.GetDirectoryName(excelFilePath), @$"Data_{excelName}\Scripts");
+                if (!Directory.Exists(modelsFolder))
+                {
+                    Directory.CreateDirectory(modelsFolder);
+                }
+
+                string json = JsonConvert.SerializeObject(Scripts, Formatting.Indented);
+                string fileName;
+
+                if (IsAuto)
+                {
+                    // 자동 저장 모드
+                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto.json");
+                    File.WriteAllText(fileName, json);
+                }
+                else
+                {
+                    // 수동 저장 모드
+                    string baseFileName = Path.GetFileNameWithoutExtension(excelFilePath) + "_scripts";
+                    int nextVersion = GetNextVersion(modelsFolder, baseFileName);
+                    string defaultFileName = $"{baseFileName}_v{nextVersion}.json";
+
+                    SaveFileDialog saveFileDialog = new SaveFileDialog
+                    {
+                        InitialDirectory = modelsFolder,
+                        Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                        FilterIndex = 1,
+                        RestoreDirectory = true,
+                        FileName = defaultFileName
+                    };
+
+                    if (saveFileDialog.ShowDialog() == true)
+                    {
+                        fileName = saveFileDialog.FileName;
+                        File.WriteAllText(fileName, json);
+                        MessageBox.Show($"모델이 성공적으로 저장되었습니다: {fileName}", "저장 성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        // 사용자가 저장을 취소한 경우
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsAuto)
+                {
+                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                // 자동 저장 모드에서는 오류 메시지를 표시하지 않습니다.
+            }
+
+            int GetNextVersion(string folder, string baseFileName)
+            {
+                int maxVersion = 0;
+                string[] files = Directory.GetFiles(folder, $"{baseFileName}_v*.json");
+
+                foreach (string file in files)
+                {
+                    string fileName = Path.GetFileNameWithoutExtension(file);
+                    if (fileName.EndsWith(".json"))
+                    {
+                        fileName = fileName.Substring(0, fileName.Length - 5);
+                    }
+                    string versionStr = fileName.Substring(fileName.LastIndexOf('v') + 1);
+                    if (int.TryParse(versionStr, out int version))
+                    {
+                        maxVersion = Math.Max(maxVersion, version);
+                    }
+                }
+
+                return maxVersion + 1;
+            }
+        }
+
+        private void SetupAutoSaveTimer()
+        {
+            autoSaveTimer = new DispatcherTimer();
+            autoSaveTimer.Interval = TimeSpan.FromSeconds(5);
+            autoSaveTimer.Tick += AutoSaveTimer_Tick;
+            autoSaveTimer.Start();
+        }
+
+        private void AutoSaveTimer_Tick(object sender, EventArgs e)
+        {
+            if(scriptChanged) SaveScripts(true);
+            scriptChanged = false;
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Save(object sender, KeyEventArgs e)
+        {
             if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 try
                 {
-                    e.Handled = true; // 이벤트가 더 이상 전파되지 않도록 표시
-                    ScriptEditor_TextChanged("save", null);
-
-                    Scripts[selectedModel] = ScriptEditor.Text;
-
-                    // MainWindow의 SaveExcelFile 메서드 호출
-                    var mainWindow = Application.Current.MainWindow as MainWindow;
-                    mainWindow?.SaveExcelFile();
+                    e.Handled = true;
+                    SaveScripts(false);
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
-
             }
         }
 
@@ -921,7 +1039,22 @@ namespace ActuLight.Pages
                 }
 
             }
-        }  
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Renew(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F5)
+            {
+                try
+                {
+                    UpdateInvokes();
+                }
+                catch
+                {
+
+                }
+            }
+        }
 
         private void ToggleAllFoldings()
         {
@@ -947,6 +1080,76 @@ namespace ActuLight.Pages
 
             ScriptEditor.FontSize = newSize;
         }
+
+        private void ViewSelectedModelPoint_Click(object sender, RoutedEventArgs e)
+        {
+            var mainWindow = Application.Current.MainWindow as MainWindow;
+            var modelPointPage = mainWindow?.pageCache["Pages/ModelPointPage.xaml"] as ModelPointPage;
+
+            if (modelPointPage?.SelectedData != null)
+            {
+                ShowSelectedModelPointWindow(modelPointPage.SelectedData);
+            }
+            else
+            {
+                MessageBox.Show("선택된 모델포인트가 없습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void ShowSelectedModelPointWindow(List<object> selectedData)
+        {
+            var window = new Window
+            {
+                Title = "선택된 모델포인트",
+                Width = 600,  // 창 너비를 조금 늘렸습니다
+                Height = 600,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+
+            var dataGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true
+            };
+
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "헤더",
+                Binding = new System.Windows.Data.Binding("Header")
+            });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "값",
+                Binding = new System.Windows.Data.Binding("Value")
+            });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "타입",
+                Binding = new System.Windows.Data.Binding("Type")
+            });
+
+            var data = new List<ModelPointItem>();
+            for (int i = 0; i < App.ModelEngine.ModelPointInfo.Headers.Count; i++)
+            {
+                data.Add(new ModelPointItem
+                {
+                    Header = App.ModelEngine.ModelPointInfo.Headers[i],
+                    Value = selectedData[i].ToString(),
+                    Type = App.ModelEngine.ModelPointInfo.Types[i]
+                });
+            }
+
+            dataGrid.ItemsSource = data;
+            window.Content = dataGrid;
+            window.Show();
+        }
+    }
+
+    public class ModelPointItem
+    {
+        public string Header { get; set; }
+        public string Value { get; set; }
+        public string Type { get; set; }
     }
 
     public class SignificantDigitsConverter : IValueConverter

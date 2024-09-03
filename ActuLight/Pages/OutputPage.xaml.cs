@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.IO;
+using Windows.Phone.Notification.Management;
 
 namespace ActuLight.Pages
 {
@@ -71,13 +72,25 @@ namespace ActuLight.Pages
                     CanUserSortColumns = false
                 };
 
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "ColumnName", Binding = new System.Windows.Data.Binding("Key") });
+                dataGrid.Columns.Add(new DataGridTextColumn { Header = "ColumnName", Binding = new System.Windows.Data.Binding("ColumnName") });
                 dataGrid.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value") });
+                dataGrid.Columns.Add(new DataGridTextColumn { Header = "RangeStart", Binding = new System.Windows.Data.Binding("RangeStart") });
+                dataGrid.Columns.Add(new DataGridTextColumn { Header = "RangeEnd", Binding = new System.Windows.Data.Binding("RangeEnd") });
+                dataGrid.Columns.Add(new DataGridTextColumn { Header = "Format", Binding = new System.Windows.Data.Binding("Format") });
 
-                var items = new List<KeyValuePair<string, string>>();
+                var items = new List<OutTableColumnInfo>();
+
                 foreach (var columnEntry in tableEntry.Value)
                 {
-                    items.Add(new KeyValuePair<string, string>(columnEntry.Key, columnEntry.Value.Text.ToString()));
+                    var columnInfo = new OutTableColumnInfo
+                    {
+                        ColumnName = columnEntry.Key,
+                        Value = columnEntry.Value.Expression.Text,
+                        RangeStart = columnEntry.Value.StartExpression?.Text ?? "",
+                        RangeEnd = columnEntry.Value.EndExpression?.Text ?? "",
+                        Format = columnEntry.Value.Format,
+                    };
+                    items.Add(columnInfo);
                 }
                 dataGrid.ItemsSource = items;
 
@@ -173,5 +186,14 @@ namespace ActuLight.Pages
             //자동저장기능 중지
             FilePage.IsAutoSync = enabled;       
         }
+    }
+
+    public class OutTableColumnInfo
+    {
+        public string ColumnName { get; set; }
+        public string Value { get; set; }
+        public string RangeStart { get; set; }
+        public string RangeEnd { get; set; }
+        public string Format { get; set; }
     }
 }

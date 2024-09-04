@@ -8,7 +8,6 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.IO;
-using Windows.Phone.Notification.Management;
 
 namespace ActuLight.Pages
 {
@@ -19,6 +18,7 @@ namespace ActuLight.Pages
         private DateTime _startTime;
         private bool _isCancelled = false;
         private string _outputFolderPath;
+        private string _selectedDelimiter = "\t";
 
         public OutputPage()
         {
@@ -106,6 +106,7 @@ namespace ActuLight.Pages
             try
             {
                 _modelWriter.IsCanceled = false;
+                _modelWriter.Delimiter = _selectedDelimiter;
                 _isCancelled = false;
 
                 _startTime = DateTime.Now;
@@ -174,6 +175,35 @@ namespace ActuLight.Pages
             ProgressRichTextBox.ScrollToEnd();
         }
 
+        private void DelimiterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selectedItem = DelimiterComboBox.SelectedItem as ComboBoxItem;
+            if (selectedItem != null)
+            {
+                switch (selectedItem.Content.ToString())
+                {
+                    case "Tab":
+                        _selectedDelimiter = "\t";
+                        break;
+                    case "Comma (,)":
+                        _selectedDelimiter = ",";
+                        break;
+                    case "Semicolon (;)":
+                        _selectedDelimiter = ";";
+                        break;
+                    case "Pipe (|)":
+                        _selectedDelimiter = "|";
+                        break;
+                    case "Space ( )":
+                        _selectedDelimiter = " ";
+                        break;
+                    default:
+                        _selectedDelimiter = ""; // None
+                        break;
+                }
+            }
+        }
+
         private void EnableButtons(bool enabled)
         {
             var mainWindow = (MainWindow)Application.Current.MainWindow;
@@ -182,6 +212,7 @@ namespace ActuLight.Pages
 
             // OutputPage의 버튼들 활성화
             StartButton.IsEnabled = enabled;
+            DelimiterComboBox.IsEnabled = enabled;
 
             //자동저장기능 중지
             FilePage.IsAutoSync = enabled;       

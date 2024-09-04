@@ -43,7 +43,7 @@ namespace ActuLight.Pages
                     var assumData = filePage.excelData["assum"];
 
                     var headers = assumData[0];
-                    var data = assumData.Skip(1).ToList();
+                    var data = assumData.Where(x => x[0] != null).Skip(1).ToList();
 
                     var assumList = ExcelImporter.ConvertToClassList<Input_assum>(data);
 

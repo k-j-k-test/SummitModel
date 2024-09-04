@@ -161,9 +161,10 @@ namespace ActuLight.Pages
         private void ModelsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ModelsList.SelectedItem is string selectedItem)
-            {
+            {              
                 if (e.RemovedItems.Count == 0)
                 {
+                    selectedModel = selectedItem;
                     return;
                 }
 
@@ -852,7 +853,7 @@ namespace ActuLight.Pages
         {
             try
             {
-                Scripts[selectedModel] = ScriptEditor.Text;
+                Scripts[ModelsList.SelectedItem.ToString()] = ScriptEditor.Text;
 
                 string excelFilePath = FilePage.SelectedFilePath;
                 if (string.IsNullOrEmpty(excelFilePath))

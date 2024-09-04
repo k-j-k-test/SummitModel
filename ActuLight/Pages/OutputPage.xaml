@@ -13,6 +13,15 @@
         <StackPanel Orientation="Horizontal" Margin="5">
             <Button x:Name="StartButton" Content="시작" Click="Start_Click" Margin="0,0,5,0"/>
             <Button x:Name="CancelButton" Content="취소" Click="Cancel_Click"/>
+            <TextBlock Text="구분자" FontSize="13" VerticalAlignment="Center" Margin="30,0,0,0"/>
+            <ComboBox x:Name="DelimiterComboBox" SelectionChanged="DelimiterComboBox_SelectionChanged" Width="150" SelectedIndex="0" Margin="10,0,0,0">
+                <ComboBoxItem Content="Tab"/>
+                <ComboBoxItem Content="Comma (,)"/>
+                <ComboBoxItem Content="Semicolon (;)"/>
+                <ComboBoxItem Content="Pipe (|)"/>
+                <ComboBoxItem Content="Space ( )"/>
+                <ComboBoxItem Content="None"/>
+            </ComboBox>
         </StackPanel>
 
         <TabControl x:Name="OutputTabControl" Grid.Row="1">

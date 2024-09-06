@@ -92,6 +92,31 @@ namespace ActuLiteModel
             return val;
         }
 
+        public static Vector Vector(string modelName, string cellName, double start, double end)
+        {
+            int _start = (int)(start + epsilon);
+            int _end = (int)(end + epsilon);
+
+            if (start > end)
+            {
+                throw new ArgumentOutOfRangeException($"Vector의 시작값을 종료값과 같거나 작아야 합니다.");
+            }
+
+            if (_end > Sheet.MaxT)
+            {
+                throw new ArgumentOutOfRangeException($"{cellName}, Vector의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+            }
+
+            List<double> arr = new List<double>();
+
+            for (int t = _start; t <= _end; t++)
+            {
+                arr.Add(Eval(modelName, cellName, t));
+            }
+
+            return new Vector(arr);
+        }
+
         public static double Assum(string modelName, double t, params object[] assumptionKeys)
         {
             int Min_t = Math.Min((int)(t + epsilon), Sheet.MaxT);
@@ -296,4 +321,89 @@ namespace ActuLiteModel
             return baseDate.AddDays(doubleRepresentation);
         }
     }
+
+    public class Vector
+    {
+        private readonly IEnumerable<double> _components;
+
+        public Vector(IEnumerable<double> components)
+        {
+            _components = components.ToList(); // Create a copy to ensure immutability
+        }
+
+        public double this[int index] => _components.ElementAt(index);
+
+        public int Dimension => _components.Count();
+
+        public static Vector operator +(Vector v1, Vector v2)
+        {
+            if (v1.Dimension != v2.Dimension)
+                throw new ArgumentException("Vectors must have the same dimension");
+
+            return new Vector(v1._components.Zip(v2._components, (a, b) => a + b));
+        }
+
+        public static Vector operator -(Vector v1, Vector v2)
+        {
+            if (v1.Dimension != v2.Dimension)
+                throw new ArgumentException("Vectors must have the same dimension");
+
+            return new Vector(v1._components.Zip(v2._components, (a, b) => a - b));
+        }
+
+        public static Vector operator *(Vector v, double scalar)
+        {
+            return new Vector(v._components.Select(c => c * scalar));
+        }
+
+        public static Vector operator *(double scalar, Vector v)
+        {
+            return v * scalar;
+        }
+
+        // New operator overload for dot product
+        public static double operator *(Vector v1, Vector v2)
+        {
+            if (v1.Dimension != v2.Dimension)
+                throw new ArgumentException("Vectors must have the same dimension");
+
+            return v1._components.Zip(v2._components, (a, b) => a * b).Sum();
+        }
+
+        public double Magnitude()
+        {
+            return Math.Sqrt(_components.Sum(c => c * c));
+        }
+
+        public Vector Normalize()
+        {
+            double mag = Magnitude();
+            if (mag == 0)
+                throw new InvalidOperationException("Cannot normalize zero vector");
+
+            return new Vector(_components.Select(c => c / mag));
+        }
+
+        public static Vector CrossProduct(Vector v1, Vector v2)
+        {
+            if (v1.Dimension != 3 || v2.Dimension != 3)
+                throw new ArgumentException("Cross product is only defined for 3D vectors");
+
+            var v1Components = v1._components.ToArray();
+            var v2Components = v2._components.ToArray();
+
+            return new Vector(new[]
+            {
+            v1Components[1] * v2Components[2] - v1Components[2] * v2Components[1],
+            v1Components[2] * v2Components[0] - v1Components[0] * v2Components[2],
+            v1Components[0] * v2Components[1] - v1Components[1] * v2Components[0]
+        });
+        }
+
+        public override string ToString()
+        {
+            return $"Vector({string.Join(", ", _components)})";
+        }
+    }
+
 }

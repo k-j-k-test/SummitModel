@@ -17,6 +17,7 @@ using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit;
 using Microsoft.Win32;
 using System.Windows.Threading;
+using System.Windows.Controls.Primitives;
 
 
 namespace ActuLight.Pages
@@ -88,6 +89,7 @@ namespace ActuLight.Pages
             {
                 Models.Clear();
                 Scripts.Clear();
+                ScriptEditor.Text = string.Empty;
 
                 string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
                 string modelsFolder = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Scripts");
@@ -127,6 +129,7 @@ namespace ActuLight.Pages
                     for (int i = Models.Count - 1; i >= 0; i--)
                     {
                         ModelsList.SelectedIndex = i;
+                        ScriptEditor.Text = Scripts.Values.ToList()[i];
                         await ProcessTextChangeInternal(Scripts[ModelsList.SelectedItem.ToString()]);
                     }
 
@@ -305,8 +308,8 @@ namespace ActuLight.Pages
                 ModelsList.ItemsSource = null;
                 ModelsList.ItemsSource = modelsList;
 
-                NewModelTextBox.Text = "";
                 ModelsList.SelectedItem = newModelName;
+                ScriptEditor.Text = "";
                 UpdateCellList(newModelName);
             }
         }
@@ -530,6 +533,8 @@ namespace ActuLight.Pages
                     (SheetTabControl.Items[0] as TabItem).IsSelected = true;
                 }
             });
+
+            HighlightHeaders();
         }
 
         private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)
@@ -589,6 +594,18 @@ namespace ActuLight.Pages
                         var binding = new Binding($"[{header}]");
                         binding.Converter = new SignificantDigitsConverter(SignificantDigits);
                         column.Binding = binding;
+
+
+                        // 컨텍스트 메뉴 이벤트 추가
+                        var existingHeaderStyle = column.HeaderStyle ?? dataGrid.ColumnHeaderStyle ?? Application.Current.TryFindResource(typeof(DataGridColumnHeader)) as Style;
+
+                        if (existingHeaderStyle != null)
+                        {
+                            var newHeaderStyle = new Style(typeof(DataGridColumnHeader), existingHeaderStyle);
+                            newHeaderStyle.Setters.Add(new EventSetter(DataGridColumnHeader.MouseDoubleClickEvent, new MouseButtonEventHandler(ColumnHeader_MouseDoubleClick)));
+                            column.HeaderStyle = newHeaderStyle;
+                        }
+
                         dataGrid.Columns.Add(column);
                     }
 
@@ -1143,6 +1160,114 @@ namespace ActuLight.Pages
             dataGrid.ItemsSource = data;
             window.Content = dataGrid;
             window.Show();
+        }
+
+        private void HighlightHeaders()
+        {
+            if (SheetTabControl.SelectedItem is TabItem selectedTab &&
+                selectedTab.Content is DataGrid dataGrid &&
+                invokeList != null && invokeList.Any())
+            {
+                var cellNamesToHighlight = invokeList.Select(invoke => invoke.CellName).ToHashSet();
+
+                foreach (var column in dataGrid.Columns)
+                {
+                    if (column is DataGridTextColumn textColumn)
+                    {
+                        var header = textColumn.Header as TextBlock;
+                        if (header != null && cellNamesToHighlight.Contains(header.Text))
+                        {
+                            header.FontWeight = FontWeights.Bold;
+                            //header.Foreground = Brushes.Red;
+
+                            var style = new Style(typeof(DataGridCell), column.CellStyle);
+                            style.Setters.Add(new Setter(DataGridCell.FontWeightProperty, FontWeights.Bold));
+                            style.Setters.Add(new Setter(DataGridCell.ForegroundProperty, Brushes.Red));
+
+                            column.CellStyle = style;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void ColumnHeader_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            var header = sender as DataGridColumnHeader;
+            if (header != null)
+            {
+                ShowCellDetails((header.Column.Header as TextBlock).Text);
+            }
+        }
+
+        private void ShowCellDetails(string cellName)
+        {
+            // 현재 선택된 탭(모델)의 이름 가져오기
+            var selectedTabItem = SheetTabControl.SelectedItem as TabItem;
+            if (selectedTabItem == null)
+            {
+                MessageBox.Show("No tab selected.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            string currentModelName = selectedTabItem.Header.ToString();
+
+            if (!Models.TryGetValue(currentModelName, out Model model))
+            {
+                MessageBox.Show($"Model '{currentModelName}' not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (!model.CompiledCells.TryGetValue(cellName, out CompiledCell cell))
+            {
+                MessageBox.Show($"Cell '{cellName}' not found in model '{currentModelName}'.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var detailWindow = new Window
+            {
+                Title = $"Cell Details: {cellName}",
+                Width = 500,
+                Height = 300,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+
+            var grid = new Grid();
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var headerTextBlock = new TextBlock
+            {
+                Text = $"Cell: {cellName}",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(10)
+            };
+            Grid.SetRow(headerTextBlock, 0);
+            grid.Children.Add(headerTextBlock);
+
+            var modelTextBlock = new TextBlock
+            {
+                Text = $"Model: {currentModelName}",
+                Margin = new Thickness(10, 0, 10, 10)
+            };
+            Grid.SetRow(modelTextBlock, 1);
+            grid.Children.Add(modelTextBlock);
+
+            var formulaTextBox = new TextBox
+            {
+                Text = cell.Formula,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Margin = new Thickness(10)
+            };
+            Grid.SetRow(formulaTextBox, 2);
+            grid.Children.Add(formulaTextBox);
+
+            detailWindow.Content = grid;
+            detailWindow.Show();
         }
     }
 

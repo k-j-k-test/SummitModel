@@ -137,6 +137,8 @@ namespace ActuLight.Pages
 
         private void WriteResults()
         {
+            _modelWriter.StatusQueue = new Queue<string>();
+
             foreach (var tableName in _modelWriter.CompiledExpressions.Keys)
             {
                 if (_isCancelled) break;

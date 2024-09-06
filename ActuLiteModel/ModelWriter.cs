@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 using System.Text;
 using Microsoft.SqlServer.Server;
+using System.Text.RegularExpressions;
 
 public class ModelWriter
 {
@@ -45,8 +46,7 @@ public class ModelWriter
 
             int ModelPointGroupCnt = _modelEngine.ModelPoints.Count;
             int CurrentModelPointCnt = 0;
-            StatusQueue = new Queue<string>();
-
+            
             foreach (var modelPoint in _modelEngine.ModelPoints)
             {               
                 var expandedPoints = _dataExpander.ExpandData(modelPoint).ToList();
@@ -78,7 +78,7 @@ public class ModelWriter
                     }
                     finally
                     {
-                        StatusMessage = $"진행단계: {CurrentModelPointCnt}/{ModelPointGroupCnt}, 완료:{CompletedPoints + ErrorPoints}/{CurrentModelExpandedPointCnt}, 오류:{ErrorPoints}";
+                        StatusMessage = $"{tableName} 진행단계: {CurrentModelPointCnt}/{ModelPointGroupCnt}, 완료:{CompletedPoints + ErrorPoints}/{CurrentModelExpandedPointCnt}, 오류:{ErrorPoints}";
                     }
                 }
 
@@ -145,9 +145,9 @@ public class ModelWriter
             columnInfo.EndExpression = _modelEngine.Context.CompileDynamic(parts[1].Trim());
             columnInfo.RangeType = RangeType.Repeat;
         }
-        else if (range.Contains("-"))
+        else if (range.IndexOf("...", StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            var parts = range.Split(new[] { "-" }, StringSplitOptions.None);
+            var parts = Regex.Split(range, @"\.{3}", RegexOptions.IgnoreCase);
             if (parts.Length != 2)
             {
                 throw new ArgumentException("Invalid range format. Expected format: start-end");

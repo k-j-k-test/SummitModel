@@ -213,7 +213,7 @@ namespace ActuLiteModel
 
         private static string TransformSumAndPrd(string input, string modelName)
         {
-            string functionPattern = @"\b(Sum|Prd)\(([^,]+),([^,]+),([^,)]+)\)";
+            string functionPattern = @"\b(Sum|Prd|Vector)\(([^,]+),([^,]+),([^,)]+)\)";
             return Regex.Replace(input, functionPattern, match =>
             {
                 string functionName = match.Groups[1].Value;

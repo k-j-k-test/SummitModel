@@ -5,9 +5,7 @@ using System.Linq;
 using Flee.PublicTypes;
 using ActuLiteModel;
 using System.Threading.Tasks;
-using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 using System.Text;
-using Microsoft.SqlServer.Server;
 using System.Text.RegularExpressions;
 
 public class ModelWriter
@@ -64,8 +62,7 @@ public class ModelWriter
                             model.Clear();
                         }
 
-                        _modelEngine.SelectedPoint = point;
-                        _modelEngine.SetModelPoint();
+                        _modelEngine.SetModelPoint(point);
                         var results = CalculateResults(tableName);
                         WriteResultsForPoint(outputWriter, tableName, results);
 

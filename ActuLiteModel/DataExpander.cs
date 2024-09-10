@@ -10,7 +10,7 @@ namespace ActuLiteModel
     {
         private readonly Type[] types;
         private readonly string[] keys;
-        private readonly KoreanExpressionContext context;
+        private readonly ExpressionContext context;
         private readonly Dictionary<string, IGenericExpression<object>> compiledExpressions;
 
         public DataExpander(IEnumerable<object> typeNames, IEnumerable<object> keys)
@@ -27,7 +27,7 @@ namespace ActuLiteModel
             this.types = ConvertToTypes(typeNameArray);
             this.keys = keyArray;
 
-            context = new KoreanExpressionContext();
+            context = new ExpressionContext();
             context.Imports.AddType(typeof(FleeFunc));
             compiledExpressions = new Dictionary<string, IGenericExpression<object>>();
             InitializeContextVariables();
@@ -71,65 +71,6 @@ namespace ActuLiteModel
             return keys;
         }
 
-        public IEnumerable<List<object>> ExpandData(IEnumerable<object> values)
-        {
-            var valueArray = values?
-                .Take(types.Length)
-                .Select(v => v?.ToString() ?? string.Empty)
-                .ToArray() ?? Array.Empty<string>();
-
-            var expandedRows = ExpandRow(valueArray);
-            return expandedRows.Select(row => ConvertRow(row).ToList());
-        }
-
-        private List<string[]> ExpandRow(string[] row)
-        {
-            var expandedValues = row.Select((value, index) => ExpandValue(value, types[index], keys[index])).ToArray();
-            return CartesianProduct(expandedValues);
-        }
-
-        private List<string> ExpandValue(string value, Type type, string key)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return new List<string> { GetDefaultValueAsString(type) };
-            }
-
-            var result = new List<string>();
-            var parts = SplitPreservingFunctions(value);
-
-            foreach (var part in parts)
-            {
-                var trimmedPart = part.Trim();
-                if (trimmedPart.Contains("~"))
-                {
-                    var range = trimmedPart.Split('~');
-                    if (range.Length == 2 && int.TryParse(range[0], out int start) && int.TryParse(range[1], out int end))
-                    {
-                        for (int i = start; i <= end; i++)
-                        {
-                            result.Add(i.ToString());
-                        }
-                    }
-                    else
-                    {
-                        result.Add(trimmedPart);
-                    }
-                }
-                else if (IsExpression(trimmedPart) && type != typeof(DateTime))
-                {
-                    compiledExpressions[key] = context.CompileGeneric<object>(trimmedPart);
-                    result.Add(trimmedPart);  // Store the original expression
-                }
-                else
-                {
-                    result.Add(trimmedPart);
-                }
-            }
-
-            return result.Count > 0 ? result : new List<string> { GetDefaultValueAsString(type) };
-        }
-
         private List<string> SplitPreservingFunctions(string input)
         {
             var result = new List<string>();
@@ -163,42 +104,6 @@ namespace ActuLiteModel
                 result.Add(currentPart.ToString());
             }
 
-            return result;
-        }
-
-        private List<string[]> CartesianProduct(List<string>[] sequences)
-        {
-            var result = new List<string[]>();
-
-            void GenerateCartesianProduct(int depth, string[] current)
-            {
-                if (depth == sequences.Length)
-                {
-                    result.Add((string[])current.Clone());
-                    return;
-                }
-
-                foreach (var item in sequences[depth])
-                {
-                    current[depth] = item;
-
-                    // Update the context with the current value
-                    context.Variables[keys[depth]] = ConvertValue(item, types[depth]);
-
-                    // Re-evaluate all compiled expressions
-                    for (int i = 0; i < depth; i++)
-                    {
-                        if (compiledExpressions.TryGetValue(keys[i], out var expression))
-                        {
-                            current[i] = expression.Evaluate().ToString();
-                        }
-                    }
-
-                    GenerateCartesianProduct(depth + 1, current);
-                }
-            }
-
-            GenerateCartesianProduct(0, new string[sequences.Length]);
             return result;
         }
 
@@ -267,6 +172,209 @@ namespace ActuLiteModel
             {
                 yield return ConvertValue(row[i], types[i]);
             }
+        }
+
+        private List<string[]> ExpandRowRecursive(string[] row, int index, Dictionary<string, object> currentValues)
+        {
+            if (index >= row.Length)
+            {
+                return new List<string[]> { row.ToArray() };
+            }
+
+            var expandedValues = ExpandValue(row[index], types[index], keys[index], currentValues);
+            var result = new List<string[]>();
+
+            foreach (var value in expandedValues)
+            {
+                var newRow = row.ToArray();
+                newRow[index] = value;
+
+                var newCurrentValues = new Dictionary<string, object>(currentValues);
+                newCurrentValues[keys[index]] = ConvertValue(value, types[index]);
+
+                // Update context for expression evaluation
+                context.Variables[keys[index]] = newCurrentValues[keys[index]];
+
+                var subResults = ExpandRowRecursive(newRow, index + 1, newCurrentValues);
+                result.AddRange(subResults);
+            }
+
+            return result;
+        }
+
+        private List<string> ExpandValue(string value, Type type, string key, Dictionary<string, object> currentValues)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return new List<string> { GetDefaultValueAsString(type) };
+            }
+
+            var result = new List<string>();
+            var parts = SplitPreservingFunctions(value);
+
+            foreach (var part in parts)
+            {
+                var trimmedPart = part.Trim();
+                if (trimmedPart.Contains("~"))
+                {
+                    var range = trimmedPart.Split('~');
+                    if (range.Length == 2)
+                    {
+                        var start = EvaluateExpression(range[0], currentValues);
+                        var end = EvaluateExpression(range[1], currentValues);
+
+                        if (start is int startInt && end is int endInt)
+                        {
+                            for (int i = startInt; i <= endInt; i++)
+                            {
+                                result.Add(i.ToString());
+                            }
+                        }
+                        else
+                        {
+                            result.Add(trimmedPart);
+                        }
+                    }
+                    else
+                    {
+                        result.Add(trimmedPart);
+                    }
+                }
+                else if (IsExpression(trimmedPart))
+                {
+                    var evaluatedValue = EvaluateExpression(trimmedPart, currentValues);
+                    result.Add(evaluatedValue.ToString());
+                }
+                else
+                {
+                    result.Add(trimmedPart);
+                }
+            }
+
+            return result.Count > 0 ? result : new List<string> { GetDefaultValueAsString(type) };
+        }
+
+        private object EvaluateExpression(string expression, Dictionary<string, object> currentValues)
+        {
+            if (!compiledExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                compiledExpression = context.CompileGeneric<object>(expression);
+                compiledExpressions[expression] = compiledExpression;
+            }
+
+            foreach (var pair in currentValues)
+            {
+                context.Variables[pair.Key] = pair.Value;
+            }
+
+            return compiledExpression.Evaluate();
+        }
+
+        public IEnumerable<List<object>> ExpandData(IEnumerable<object> values)
+        {
+            var valueArray = values?
+                .Take(types.Length)
+                .Select(v => v?.ToString() ?? string.Empty)
+                .ToArray() ?? Array.Empty<string>();
+
+            var sortedIndices = SortIndicesByDependency(valueArray).Reverse().ToArray();
+            var expandedRows = ExpandRowRecursive(valueArray, sortedIndices, 0, new Dictionary<string, object>());
+            return expandedRows.Select(row => ConvertRow(row).ToList());
+        }
+
+        private int[] SortIndicesByDependency(string[] values)
+        {
+            var dependencies = new Dictionary<int, HashSet<int>>();
+            var contextVariables = new HashSet<string>(context.Variables.Keys);
+
+            for (int i = 0; i < values.Length; i++)
+            {
+                dependencies[i] = new HashSet<int>();
+                for (int j = 0; j < values.Length; j++)
+                {
+                    if (i != j && ContainsVariable(values[i], keys[j], contextVariables))
+                    {
+                        dependencies[i].Add(j);
+                    }
+                }
+            }
+
+            return TopologicalSort(dependencies);
+        }
+
+        private bool ContainsVariable(string expression, string variable, HashSet<string> contextVariables)
+        {
+            if (contextVariables.Contains(variable))
+            {
+                var pattern = $@"\b{Regex.Escape(variable)}\b";
+                return Regex.IsMatch(expression, pattern);
+            }
+            return false;
+        }
+
+        private int[] TopologicalSort(Dictionary<int, HashSet<int>> dependencies)
+        {
+            var sorted = new List<int>();
+            var visited = new HashSet<int>();
+            var tempMark = new HashSet<int>();
+
+            void Visit(int node)
+            {
+                if (tempMark.Contains(node))
+                {
+                    throw new InvalidOperationException("Circular dependency detected");
+                }
+                if (!visited.Contains(node))
+                {
+                    tempMark.Add(node);
+                    foreach (var dependent in dependencies[node])
+                    {
+                        Visit(dependent);
+                    }
+                    tempMark.Remove(node);
+                    visited.Add(node);
+                    sorted.Insert(0, node);
+                }
+            }
+
+            for (int i = 0; i < dependencies.Count; i++)
+            {
+                if (!visited.Contains(i))
+                {
+                    Visit(i);
+                }
+            }
+
+            return sorted.ToArray();
+        }
+
+        private List<string[]> ExpandRowRecursive(string[] row, int[] sortedIndices, int currentIndex, Dictionary<string, object> currentValues)
+        {
+            if (currentIndex >= sortedIndices.Length)
+            {
+                return new List<string[]> { row.ToArray() };
+            }
+
+            int index = sortedIndices[currentIndex];
+            var expandedValues = ExpandValue(row[index], types[index], keys[index], currentValues);
+            var result = new List<string[]>();
+
+            foreach (var value in expandedValues)
+            {
+                var newRow = row.ToArray();
+                newRow[index] = value;
+
+                var newCurrentValues = new Dictionary<string, object>(currentValues);
+                newCurrentValues[keys[index]] = ConvertValue(value, types[index]);
+
+                // Update context for expression evaluation
+                context.Variables[keys[index]] = newCurrentValues[keys[index]];
+
+                var subResults = ExpandRowRecursive(newRow, sortedIndices, currentIndex + 1, newCurrentValues);
+                result.AddRange(subResults);
+            }
+
+            return result;
         }
     }
 }

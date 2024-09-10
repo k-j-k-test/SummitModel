@@ -27,6 +27,7 @@ namespace ActuLight.Pages
         public SyntaxHighlighter SyntaxHighlighter;
         public RegionFoldingStrategy FoldingStrategy;
         public FoldingManager FoldingManager;
+        private ScriptEditorEnhancer editorEnhancer;
 
         public Dictionary<string, Model> Models = App.ModelEngine.Models;
         public Dictionary<string, string> Scripts { get; set; } = new Dictionary<string, string>();
@@ -41,7 +42,9 @@ namespace ActuLight.Pages
         private List<(string CellName, int T)> invokeList;
 
         private bool scriptChanged = false;
+
         private DispatcherTimer autoSaveTimer;
+        private int autoSaveTickCounter;
 
         public SpreadSheetPage()
         {
@@ -62,6 +65,9 @@ namespace ActuLight.Pages
             ScriptEditor.Options.EnableHyperlinks = true;
             ScriptEditor.Options.EnableEmailHyperlinks = true;
             ScriptEditor.Options.ConvertTabsToSpaces = true;
+
+            // ScriptEditorEnhancer 초기화
+            editorEnhancer = new ScriptEditorEnhancer(ScriptEditor);
 
             //텍스트 변경 이벤트
             ScriptEditor.TextChanged += ScriptEditor_TextChanged;
@@ -866,7 +872,7 @@ namespace ActuLight.Pages
             }
         }
 
-        public void SaveScripts(bool IsAuto)
+        public void SaveScripts(bool IsAuto, int AutoNum = 0)
         {
             try
             {
@@ -895,7 +901,7 @@ namespace ActuLight.Pages
                 if (IsAuto)
                 {
                     // 자동 저장 모드
-                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto.json");
+                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto{AutoNum}.json");
                     File.WriteAllText(fileName, json);
                 }
                 else
@@ -969,7 +975,16 @@ namespace ActuLight.Pages
 
         private void AutoSaveTimer_Tick(object sender, EventArgs e)
         {
-            if(scriptChanged) SaveScripts(true);
+            autoSaveTickCounter++;
+
+            if (autoSaveTickCounter % 60 == 0)
+            {
+                SaveScripts(true, 2);
+            }
+            else
+            {
+                if (scriptChanged) SaveScripts(true, 1);
+            }
             scriptChanged = false;
         }
 

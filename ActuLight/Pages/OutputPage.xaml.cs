@@ -16,9 +16,9 @@ namespace ActuLight.Pages
         private ModelWriter _modelWriter;
         private DispatcherTimer _timer;
         private DateTime _startTime;
-        private bool _isCancelled = false;
         private string _outputFolderPath;
         private string _selectedDelimiter = "\t";
+        private bool _initAutoSync;
 
         public OutputPage()
         {
@@ -107,7 +107,7 @@ namespace ActuLight.Pages
             {
                 _modelWriter.IsCanceled = false;
                 _modelWriter.Delimiter = _selectedDelimiter;
-                _isCancelled = false;
+                _initAutoSync = FilePage.IsAutoSync;
 
                 _startTime = DateTime.Now;
                 _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
@@ -122,6 +122,9 @@ namespace ActuLight.Pages
                 ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {(DateTime.Now - _startTime).ToString(@"hh\:mm\:ss")} " + "\r\n" + "\r\n");
 
                 EnableButtons(true);
+
+                //변수 초기화
+                App.ModelEngine.SetModelPoint();
             }
             catch (Exception ex)
             {
@@ -131,7 +134,6 @@ namespace ActuLight.Pages
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
-            _isCancelled = true;
             _modelWriter.IsCanceled = true;
         }
 
@@ -141,7 +143,7 @@ namespace ActuLight.Pages
 
             foreach (var tableName in _modelWriter.CompiledExpressions.Keys)
             {
-                if (_isCancelled) break;
+                if (_modelWriter.IsCanceled) break;
                 _modelWriter.WriteResults(_outputFolderPath, tableName);
             }
 
@@ -217,7 +219,7 @@ namespace ActuLight.Pages
             DelimiterComboBox.IsEnabled = enabled;
 
             //자동저장기능 중지
-            FilePage.IsAutoSync = enabled;       
+            FilePage.IsAutoSync = enabled ? _initAutoSync : enabled;       
         }
     }
 

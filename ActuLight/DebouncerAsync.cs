@@ -38,8 +38,7 @@ namespace ActuLight
                 });
 
             try
-            {
-                
+            {               
                 await Task.Delay(delay, cts.Token);
                 await action();
             }

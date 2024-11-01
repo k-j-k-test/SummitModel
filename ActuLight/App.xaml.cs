@@ -4,6 +4,8 @@ using ModernWpf;
 using Newtonsoft.Json;
 using System.IO;
 using System;
+using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace ActuLight
 {
@@ -16,6 +18,7 @@ namespace ActuLight
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
             base.OnStartup(e);
             ModelEngine = new ModelEngine();
             SettingsManager = new AppSettingsManager();

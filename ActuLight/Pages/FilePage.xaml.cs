@@ -345,14 +345,18 @@ namespace ActuLight.Pages
                 foreach (var sheet in excelData)
                 {
                     int rowCount = sheet.Value.Count;
-                    int columnCount = sheet.Value[0].Count;
 
-                    summaryBuilder.AppendLine($"{sheet.Key}: {rowCount}행, {columnCount}열");
-
-                    if (rowCount >= 100000 || columnCount >= 5000)
+                    if(sheet.Value.Any())
                     {
-                        needsOptimization = true;
-                        warningBuilder.AppendLine($"경고: {sheet.Key} 시트의 크기가 매우 큽니다. 최적화가 필요할 수 있습니다.");
+                        int columnCount = sheet.Value[0].Count;
+
+                        summaryBuilder.AppendLine($"{sheet.Key}: {rowCount}행, {columnCount}열");
+
+                        if (rowCount >= 100000 || columnCount >= 5000)
+                        {
+                            needsOptimization = true;
+                            warningBuilder.AppendLine($"경고: {sheet.Key} 시트의 크기가 매우 큽니다. 최적화가 필요할 수 있습니다.");
+                        }
                     }
                 }
 

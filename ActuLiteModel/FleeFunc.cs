@@ -13,7 +13,7 @@ namespace ActuLiteModel
 
         public static Dictionary<string, Model> SubModelDict = new Dictionary<string, Model>();
 
-        public static double epsilon = 0.0000001;
+        public static double epsilon(double t) => t < 0 ? -0.0000001 : 0.0000001;
 
         public static double Eval(string modelName, string cellName, double t)
         {
@@ -21,7 +21,7 @@ namespace ActuLiteModel
 
             // 현재 t 값 저장
             int t0 = (int)model.Engine.Context.Variables["t"];
-            int t1 = (int)(t + epsilon);
+            int t1 = (int)(t + epsilon(t));
 
             // t 값 설정
             model.Engine.Context.Variables["t"] = t1;
@@ -47,7 +47,7 @@ namespace ActuLiteModel
 
             // 현재 컨텍스트 변수 상태 저장
             int t0 = (int)model.Engine.Context.Variables["t"];
-            int t1 = (int)(t + epsilon);
+            int t1 = (int)(t + epsilon(t));
             var originalParameters = new Dictionary<string, object>(model.Parameters);
             var originalVariables = new Dictionary<string, object>();
             string originalSheetName = model.CurrentSheetName;
@@ -92,34 +92,9 @@ namespace ActuLiteModel
             return val;
         }
 
-        public static Vector Vector(string modelName, string cellName, double start, double end)
-        {
-            int _start = (int)(start + epsilon);
-            int _end = (int)(end + epsilon);
-
-            if (start > end)
-            {
-                throw new ArgumentOutOfRangeException($"Vector의 시작값을 종료값과 같거나 작아야 합니다.");
-            }
-
-            if (_end > Sheet.MaxT)
-            {
-                throw new ArgumentOutOfRangeException($"{cellName}, Vector의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
-            }
-
-            List<double> arr = new List<double>();
-
-            for (int t = _start; t <= _end; t++)
-            {
-                arr.Add(Eval(modelName, cellName, t));
-            }
-
-            return new Vector(arr);
-        }
-
         public static double Assum(string modelName, double t, params object[] assumptionKeys)
         {
-            int Min_t = Math.Min((int)(t + epsilon), Sheet.MaxT);
+            int Min_t = Math.Min((int)(t + epsilon(t)), Sheet.MaxT);
 
             string[] keys = assumptionKeys.Select(x => x.ToString()).ToArray();
 
@@ -137,8 +112,8 @@ namespace ActuLiteModel
 
         public static double Sum(string modelName, string cellName, double start, double end)
         {
-            int _start = (int)(start + epsilon);
-            int _end = (int)(end + epsilon);
+            int _start = (int)(start + epsilon(start));
+            int _end = (int)(end + epsilon(end));
 
             if (start > end) return 0;
 
@@ -159,8 +134,8 @@ namespace ActuLiteModel
 
         public static double Prd(string modelName, string cellName, double start, double end)
         {
-            int _start = (int)(start + epsilon);
-            int _end = (int)(end + epsilon);
+            int _start = (int)(start + epsilon(start));
+            int _end = (int)(end + epsilon(end));
 
             if (start > end) return 0;
 
@@ -177,6 +152,31 @@ namespace ActuLiteModel
             }
 
             return PrdVal;
+        }
+
+        public static Vector Vector(string modelName, string cellName, double start, double end)
+        {
+            int _start = (int)(start + epsilon(start));
+            int _end = (int)(end + epsilon(end));
+
+            if (start > end)
+            {
+                throw new ArgumentOutOfRangeException($"Vector의 시작값을 종료값과 같거나 작아야 합니다.");
+            }
+
+            if (_end > Sheet.MaxT)
+            {
+                throw new ArgumentOutOfRangeException($"{cellName}, Vector의 종료값은 {Sheet.MaxT}를 초과할 수 없습니다");
+            }
+
+            List<double> arr = new List<double>();
+
+            for (int t = _start; t <= _end; t++)
+            {
+                arr.Add(Eval(modelName, cellName, t));
+            }
+
+            return new Vector(arr);
         }
 
         public static double Max(params double[] vals) => vals.Max();

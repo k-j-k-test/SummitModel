@@ -1,15 +1,19 @@
 ﻿<UserControl x:Class="ActuLight.NavigationBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.modernwpf.com/2019"
              xmlns:local="clr-namespace:ActuLight">
-    <Border Padding="10">
-        <StackPanel Orientation="Horizontal">
-            <Button x:Name="FileButton" Content="파일" Margin="0,0,5,0" Click="FileButton_Click"/>
-            <Button x:Name="ModelPointButton" Content="모델포인트" Margin="0,0,5,0" Click="ModelPointButton_Click"/>
-            <Button x:Name="AssumptionButton" Content="가정" Margin="0,0,5,0" Click="AssumptionButton_Click"/>
-            <Button x:Name="OutputButton" Content="출력" Margin="0,0,5,0" Click="OutputButton_Click"/>
-            <Button x:Name="SpreadsheetButton" Content="스프레드시트" Margin="0,0,5,0" Click="SpreadsheetButton_Click"/>
-            <Button x:Name="SettingsButton" Content="설정" Margin="0,0,5,0" Click="SettingsButton_Click"/>
-        </StackPanel>
-    </Border>
+    <ui:NavigationView PaneDisplayMode="Top" 
+                       IsBackButtonVisible="Collapsed"
+                       IsSettingsVisible="False">
+        
+        <ui:NavigationView.MenuItems>
+            <ui:NavigationViewItem x:Name="FileButton" Content="파일" Icon="Document" Tag="file" MouseDown="FileButton_Click"/>
+            <ui:NavigationViewItem x:Name="ModelPointButton" Content="모델포인트" Icon="AllApps" Tag="modelpoint" MouseDown="ModelPointButton_Click"/>
+            <ui:NavigationViewItem x:Name="AssumptionButton" Content="가정" Icon="Bookmarks" Tag="assumption" MouseDown="AssumptionButton_Click"/>
+            <ui:NavigationViewItem x:Name="OutputButton" Content="출력" Icon="Share" Tag="output" MouseDown="OutputButton_Click"/>
+            <ui:NavigationViewItem x:Name="SpreadsheetButton" Content="스프레드시트" Icon="ViewAll" Tag="spreadsheet" MouseDown="SpreadsheetButton_Click"/>
+            <ui:NavigationViewItem x:Name="SettingsButton" Content="설정" Icon="Setting" Tag="settings" MouseDown="SettingsButton_Click"/>
+        </ui:NavigationView.MenuItems>
+    </ui:NavigationView>
 </UserControl>

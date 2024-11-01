@@ -18,6 +18,9 @@ using ICSharpCode.AvalonEdit;
 using Microsoft.Win32;
 using System.Windows.Threading;
 using System.Windows.Controls.Primitives;
+using Windows.Graphics.Printing.Workflow;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 
 
 namespace ActuLight.Pages
@@ -42,6 +45,7 @@ namespace ActuLight.Pages
         private List<(string CellName, int T)> invokeList;
 
         private bool scriptChanged = false;
+        private Dictionary<string, MatchCollection> cellMatchesDict = new Dictionary<string, MatchCollection>();
 
         private DispatcherTimer autoSaveTimer;
         private int autoSaveTickCounter;
@@ -184,7 +188,7 @@ namespace ActuLight.Pages
                 {
                     Scripts[selectedModel_old] = ScriptEditor.Text;
                 }
-                
+
                 ScriptEditor.Text = Scripts.TryGetValue(selectedModel_new, out string script) ? script : "";
                 selectedModel = selectedModel_new;
             }
@@ -263,6 +267,7 @@ namespace ActuLight.Pages
                                                                   cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
 
                     cellMatches = newCellMatches;
+                    cellMatchesDict[selectedModel] = cellMatches;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
@@ -451,7 +456,7 @@ namespace ActuLight.Pages
             }
         }
 
-        public void UpdateSheets()
+        public void UpdateSheets2()
         {
             
             // 현재 선택된 탭의 이름 저장
@@ -541,6 +546,76 @@ namespace ActuLight.Pages
             });
 
             HighlightHeaders();
+        }
+
+        public void UpdateSheets()
+        {
+            try
+            {
+                // UI 스레드에서 실행되도록 전체 메서드를 래핑
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    // 현재 선택된 탭의 이름 저장
+                    string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
+
+                    // TabControl의 아이템을 한 번에 업데이트하기 위한 새로운 컬렉션
+                    var newItems = new ObservableCollection<TabItem>();
+
+                    // 현재 모델의 시트들을 처리
+                    if (Models.TryGetValue(selectedModel, out Model currentModel))
+                    {
+                        foreach (var sheetPair in currentModel.Sheets)
+                        {
+                            var tab = CreateOrUpdateTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value);
+                            newItems.Add(tab);
+                        }
+                    }
+
+                    // 다른 모델의 시트들을 처리
+                    foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
+                    {
+                        foreach (var sheetPair in modelPair.Value.Sheets)
+                        {
+                            var tab = CreateOrUpdateTab(sheetPair.Key, sheetPair.Value);
+                            newItems.Add(tab);
+                        }
+                    }
+
+                    // TabControl의 아이템을 한 번에 업데이트
+                    SheetTabControl.Items.Clear();
+                    foreach (var item in newItems)
+                    {
+                        SheetTabControl.Items.Add(item);
+                    }
+
+                    // 이전에 선택된 탭 복원
+                    var tabToSelect = SheetTabControl.Items.Cast<TabItem>()
+                        .FirstOrDefault(t => t.Header.ToString() == selectedTabName);
+
+                    if (tabToSelect != null)
+                    {
+                        tabToSelect.IsSelected = true;
+                    }
+                    else if (SheetTabControl.Items.Count > 0)
+                    {
+                        (SheetTabControl.Items[0] as TabItem).IsSelected = true;
+                    }
+
+                    HighlightHeaders();
+                }, System.Windows.Threading.DispatcherPriority.Render);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"UpdateSheets error: {ex.Message}");
+                // 필요한 예외 처리
+            }
+        }
+
+        private TabItem CreateOrUpdateTab(string header, Sheet sheet)
+        {
+            TabItem tab = new TabItem();
+            AddSheetTab(header, sheet, tab);
+            return tab;
         }
 
         private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)
@@ -649,29 +724,32 @@ namespace ActuLight.Pages
         {
             var sortOption = App.SettingsManager.CurrentSettings.DataGridSortOption;
 
-            foreach (var sheet in Models[selectedModel].Sheets.Values)
+            foreach (var model in Models.Values)
             {
-                switch (sortOption)
+                foreach(Sheet sheet in model.Sheets.Values)
                 {
-                    case DataGridSortOption.CellDefinitionOrder:
-                        SortSheetByCellDefinition(sheet);
-                        break;
-                    case DataGridSortOption.Alphabetical:
-                        sheet.SortCache(key => key);
-                        break;
-                        // Default case: 기존 순서 유지
+                    switch (sortOption)
+                    {
+                        case DataGridSortOption.CellDefinitionOrder:
+                            SortSheetByCellDefinition(model.Name, sheet);
+                            break;
+                        case DataGridSortOption.Alphabetical:
+                            sheet.SortCache(key => key);
+                            break;
+                            // Default case: 기존 순서 유지
+                    }
                 }
             }
         }
 
-        private void SortSheetByCellDefinition(Sheet sheet)
+        private void SortSheetByCellDefinition(string modelName, Sheet sheet)
         {
-            if (cellMatches == null)
+            if (!cellMatchesDict.ContainsKey(modelName))
             {
                 return;
             }
 
-            var cellOrder = cellMatches.Cast<Match>()
+            var cellOrder = cellMatchesDict[modelName].Cast<Match>()
                 .Select(m => m.Groups["cellName"].Value)
                 .ToList();
 
@@ -694,10 +772,13 @@ namespace ActuLight.Pages
             SyntaxHighlighter.UpdateAssumptions(App.ModelEngine.Assumptions.Keys);
         }
 
-        private void ViewInExcel_Click(object sender, RoutedEventArgs e)
+        private async void ViewInExcel_Click(object sender, RoutedEventArgs e)
         {
             try
             {
+                ViewInExcelButton.IsEnabled = false;
+                ViewInExcelButton.Content = "엑셀로 추줄중..";
+
                 string excelFilePath = FilePage.SelectedFilePath;
                 if (string.IsNullOrEmpty(excelFilePath))
                 {
@@ -717,12 +798,17 @@ namespace ActuLight.Pages
                 string filePath = Path.Combine(samplesDirectory, $"Sample_{fileName}.xlsx");
 
                 // Models가 이미 정렬되어 있으므로, 그대로 SaveSampleToExcel 메서드에 전달
-                App.ModelEngine.SaveSampleToExcel(filePath);
+                await Task.Run(() => App.ModelEngine.SaveSampleToExcel(filePath));
                 ModelEngine.RunLatestExcelFile(filePath);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Excel 파일 생성 또는 열기 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                ViewInExcelButton.IsEnabled = true;
+                ViewInExcelButton.Content = "엑셀로 보기";
             }
         }
 

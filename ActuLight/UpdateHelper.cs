@@ -52,7 +52,7 @@ namespace ActuLight
             if (releases.Count > 0)
             {
                 var latestRelease = releases[0];
-                var asset = latestRelease.Assets.FirstOrDefault(a => a.Name == "net48.zip");
+                var asset = latestRelease.Assets.FirstOrDefault(a => a.Name == "PVPlus.zip");
                 return (latestRelease.TagName, asset?.BrowserDownloadUrl);
             }
 

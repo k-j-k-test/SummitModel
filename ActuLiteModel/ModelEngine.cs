@@ -42,7 +42,9 @@ namespace ActuLiteModel
 
         public void SetModelPoint()
         {
+            //Sytem Variables
             Context.Variables["t"] = 0;
+            Context.Variables["MTH_RATIO"] = 1.0/12.0;
 
             for (int i = 0; i < ModelPointInfo.Headers.Count; i++)
             {
@@ -70,7 +72,6 @@ namespace ActuLiteModel
             foreach (var assumption in assumptions)
             {
                 string[] keys = { assumption.Key1, assumption.Key2, assumption.Key3 };
-                Array.Sort(keys);
                 string lookupKey = string.Join("|", keys.Where(key => !string.IsNullOrWhiteSpace(key)));
 
                 if (!Assumptions.ContainsKey(lookupKey))
@@ -115,7 +116,6 @@ namespace ActuLiteModel
 
         public List<double> GetAssumptionRate(params string[] keys)
         {
-            Array.Sort(keys);
             string lookupKey = string.Join("|", keys.Where(key => !string.IsNullOrWhiteSpace(key)));
 
             if (Assumptions.TryGetValue(lookupKey, out var assumptionsForKey))
@@ -130,7 +130,7 @@ namespace ActuLiteModel
                 }
             }
 
-            throw new Exception("No matching assumption found");
+            throw new Exception($"No matching assumption keys [{string.Join(",", keys)}] found");
         }
 
         public static string TransformText(string input, string modelName)

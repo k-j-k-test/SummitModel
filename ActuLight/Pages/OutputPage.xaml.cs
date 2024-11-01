@@ -54,7 +54,7 @@ namespace ActuLight.Pages
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"데이터 로드 중 오류가 발생했습니다: \n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"out 데이터 로드 중 오류가 발생했습니다. 수식을 다시 한 번 확인바랍니다.: \n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

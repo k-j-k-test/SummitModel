@@ -93,6 +93,13 @@ namespace ActuLight.Pages
         {
             if (App.ModelEngine.Assumptions.TryGetValue(key, out List<Input_assum> assumptions))
             {
+                bool allZeros = assumptions.All(a => a.Rates?.All(r => r == 0) ?? true);
+                if (allZeros)
+                {
+                    MessageBox.Show("표시할 데이터가 없습니다", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
                 var detailWindow = new Window
                 {
                     Title = "상세 가정 정보",

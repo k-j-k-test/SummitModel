@@ -14,9 +14,9 @@
 
         <!-- 상단 버튼 패널 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
-            <Button Content="데이터 가져오기" Click="LoadData_Click" Margin="0,0,5,0"/>
-            <Button Content="엑셀로 보기" Click="ViewInExcel_Click" Margin="0,0,5,0"/>
-            <Button Content="모델포인트 보기" Click="ViewSelectedModelPoint_Click" Margin="0,0,5,0"/>
+            <Button Content="데이터 가져오기" x:Name="LoadDataButton" Click="LoadData_Click" Margin="0,0,5,0"/>
+            <Button Content="엑셀로 보기" x:Name="ViewInExcelButton" Click="ViewInExcel_Click" Margin="0,0,5,0"/>
+            <Button Content="모델포인트 보기" x:Name="ViewSelectedModelPointButton" Click="ViewSelectedModelPoint_Click" Margin="0,0,5,0"/>
         </StackPanel>
 
         <!-- 상단 패널 -->

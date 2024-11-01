@@ -704,7 +704,7 @@ namespace ActuLight
                         insertText = CompleteModelReference(textBeforeCaret, textAfterCaret);
                         break;
                     case CompletionType.Assumption:
-                        insertText = Text;
+                        insertText = CompleteAssumption(Text);
                         break;
                     case CompletionType.CellAutoCompletion:
                         insertText = CompleteCellDefinition(lineText);
@@ -784,6 +784,11 @@ namespace ActuLight
             {
                 return $"{Text}()";
             }
+        }
+
+        private string CompleteAssumption(string text)
+        {
+            return text.Replace("|", @""", """);
         }
 
         private string CompleteModelReference(string textBeforeCaret, string textAfterCaret)

@@ -310,17 +310,28 @@ namespace ActuLight.Pages
 
         private void ApplyFilter(string filterText)
         {
-            if (string.IsNullOrWhiteSpace(filterText))
+                if (AssumptionDataGrid.ItemsSource == null) return;
+
+                if (string.IsNullOrWhiteSpace(filterText))
+                {
+                    AssumptionDataGrid.ItemsSource = originalData;
+                }
+                else
+                {
+                    var filteredData = originalData.Where(item =>
+                        item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
+                    ).ToList();
+                    AssumptionDataGrid.ItemsSource = filteredData;
+                }
+        }
+
+        private void SearchButton_Click(object sender, RoutedEventArgs e)
+        {
+            var searchWindow = new RiskRateManagementWindow();
+            if (searchWindow.ShowDialog() == true)
             {
-                AssumptionDataGrid.ItemsSource = originalData;
-            }
-            else
-            {
-                var filteredData = originalData.Where(item =>
-                    item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
-                ).ToList();
-                AssumptionDataGrid.ItemsSource = filteredData;
+
             }
         }
     }

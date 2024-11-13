@@ -11,6 +11,19 @@
         <!-- 상단 버튼 패널 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
             <TextBox x:Name="SearchTextBox" Width="200" Margin="5,0,0,0" TextChanged="SearchTextBox_TextChanged"/>
+            <Button x:Name="SearchButton" 
+                Click="SearchButton_Click" 
+                Margin="5,0,0,0" 
+                ToolTip="위험률 검색">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE721;" 
+                         FontFamily="Segoe MDL2 Assets" 
+                         VerticalAlignment="Center"
+                         Margin="0,0,5,0"/>
+                    <TextBlock Text="위험률 검색"/>
+                </StackPanel>
+            </Button>
+
         </StackPanel>
         
         <!-- DataGrid -->

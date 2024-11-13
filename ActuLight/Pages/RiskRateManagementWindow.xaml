@@ -1,0 +1,273 @@
+﻿<Window x:Class="ActuLight.RiskRateManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="위험률 관리" Height="700" Width="1000"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <TabControl x:Name="MainTabControl">
+            <!-- 검색 탭 -->
+            <TabItem Header="위험률 검색">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 검색 영역 -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="검색어" 
+                           Grid.Column="0"
+                           VerticalAlignment="Center" 
+                           Margin="0,0,10,0"/>
+
+                        <ui:AutoSuggestBox x:Name="SearchBox" 
+                           Grid.Column="1"
+                           Margin="0,0,10,0"         
+                           PlaceholderText="위험률명을 입력하세요"
+                           TextChanged="SearchBox_TextChanged"
+                           SuggestionChosen="SearchBox_SuggestionChosen"
+                           QuerySubmitted="SearchBox_QuerySubmitted"/>
+
+                        <Button x:Name="SearchButton" 
+                            Content="검색" 
+                            Click="SearchButton_Click"
+                            Grid.Column="2" 
+                            MinWidth="80"/>
+
+                        <TextBlock Text="회사" 
+                           Grid.Column="3"
+                           VerticalAlignment="Center" 
+                           Margin="20,0,10,0"/>
+
+                        <ComboBox x:Name="CompanyComboBox"
+                          Grid.Column="4"
+                          Width="150"
+                          Margin="0,0,20,0"
+                          SelectionChanged="CompanyComboBox_SelectionChanged"/>
+                    </Grid>
+
+                    <!-- 검색 결과 카운트 -->
+                    <TextBlock x:Name="ResultCountText" Grid.Row="1" Margin="0,0,0,5"
+                               Text="검색 결과: 0건" FontWeight="Bold"/>
+
+                    <!-- 검색 결과 DataGrid -->
+                    <DataGrid x:Name="SearchResultsGrid" Grid.Row="2" 
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              SelectionMode="Extended"
+                              SelectionUnit="FullRow"
+                              MouseDoubleClick="SearchResultsGrid_MouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="회사명" Binding="{Binding 회사명}" Width="120"/>
+                            <DataGridTextColumn Header="위험률명" Binding="{Binding 위험률명}" Width="*"/>
+                            <DataGridTextColumn Header="적용일자" Binding="{Binding 적용일자}" Width="100"/>
+                            <DataGridTextColumn Header="기간구조" Binding="{Binding 기간구조}" Width="80"/>
+                            <DataGridTextColumn Header="팩터구성" Binding="{Binding 팩터구성}" Width="200"/>
+                            <DataGridTextColumn Header="개수" Binding="{Binding Details.Count}" Width="60"/>
+                            <DataGridTextColumn Header="등록일시" Binding="{Binding 등록일시}" Width="150"/>
+                            <DataGridTextColumn Header="등록자" Binding="{Binding 등록자}" Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- 위험률 상세 탭 -->
+            <TabItem x:Name="DetailTab" Header="위험률 상세">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 선택된 위험률 정보 -->
+                    <TextBlock x:Name="SelectedRiskRateInfo" 
+                             Grid.Row="0" 
+                             Margin="0,0,0,10"
+                             FontWeight="Bold"/>
+
+                    <!-- 상세 정보 DataGrid -->
+                    <DataGrid x:Name="DetailResultsGrid" 
+                             Grid.Row="1"
+                             AutoGenerateColumns="False"
+                             SelectionMode="Extended"
+                             IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="회사명" Binding="{Binding COMPANY_NAME}" Width="120"/>
+                            <DataGridTextColumn Header="위험률명" Binding="{Binding RISK_RATE_NAME}" Width="*"/>
+                            <DataGridTextColumn Header="적용일자" Binding="{Binding APPROVAL_DATE}" Width="100"/>
+                            <DataGridTextColumn Header="팩터" Binding="{Binding FACTORS}" Width="200"/>
+                            <DataGridTextColumn Header="위험률" Binding="{Binding RATES}" Width="200"/>
+                            <DataGridTextColumn Header="비고" Binding="{Binding COMMENT}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- 분석 탭 -->
+            <TabItem x:Name="AnalysisTab" 
+                     Header="위험률 차트" 
+                     AllowDrop="True">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 안내 메시지 -->
+                    <TextBlock Grid.Row="0" 
+                             Text="위험률 상세 탭에서 행을 우클릭하여 '위험률 분석' 탭에 추가하세요"
+                             Margin="0,0,0,10"
+                             Foreground="Gray"/>
+
+                    <!-- X축 범위 설정 -->
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="MinX:" 
+                                 VerticalAlignment="Center" 
+                                 Margin="0,0,5,0"/>
+                        <TextBox x:Name="MinXTextBox" 
+                                Grid.Column="1" 
+                                Text="0"
+                                Margin="0,0,10,0"
+                                />
+
+                        <TextBlock Text="MaxX:" 
+                                 Grid.Column="2" 
+                                 VerticalAlignment="Center" 
+                                 Margin="0,0,5,0"/>
+                        
+                        <TextBox x:Name="MaxXTextBox" 
+                                Grid.Column="3" 
+                                Text="130"
+                                Margin="0,0,10,0"
+                                />
+
+                        <Button x:Name="ApplyRangeButton"
+                                Grid.Column="4"
+                                Content="적용"
+                                Click="ApplyRangeButton_Click"
+                                MinWidth="60"
+                                Margin="0,0,10,0"/>
+
+                        <Button x:Name="ClearChartButton"
+                                Grid.Column="5"
+                                Content="초기화"
+                                Click="ClearChartButton_Click"
+                                MinWidth="60"/>
+                       
+                    </Grid>
+
+                    
+                    <!-- 차트 -->
+                    <lvc:CartesianChart x:Name="AnalysisChart"
+                                      Grid.Row="2"
+                                      DisableAnimations="False"
+                                      Hoverable="True">
+                        <lvc:CartesianChart.DataTooltip>
+                            <lvc:DefaultTooltip SelectionMode="SharedYValues"/>
+                        </lvc:CartesianChart.DataTooltip>
+                    </lvc:CartesianChart>
+                </Grid>
+            </TabItem>
+            
+            <!-- 등록 탭 -->
+            <TabItem Header="위험률 등록">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 상태 메시지와 체크박스 영역 -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="RegistrationStatusText" 
+                              Grid.Column="0"
+                              TextWrapping="Wrap"/>
+
+                        <!-- 등록자 입력 영역 -->
+                        <StackPanel Grid.Column="1" 
+                          Orientation="Horizontal" 
+                          VerticalAlignment="Center" 
+                          Margin="0,0,15,0">
+                            <Button x:Name="GuideButton"
+                            Click="GuideButton_Click"
+                            Margin="0,0,10,0"
+                            ToolTip="위험률 등록 가이드">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Document" 
+                                          Margin="0,0,5,0"/>
+                                    <TextBlock Text="등록 가이드"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="등록자:" 
+                              VerticalAlignment="Center"
+                              Margin="0,0,5,0"/>
+                            <TextBox x:Name="CreatedByTextBox"
+                            Width="100"
+                            Height="25"
+                            VerticalContentAlignment="Center"
+                            MaxLength="50"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 입력 영역 -->
+                    <TextBox x:Name="RegistrationTextBox" 
+                Grid.Row="1"
+                TextWrapping="NoWrap"
+                AcceptsTab="True"
+                AcceptsReturn="True"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Auto"
+                FontFamily="Consolas"
+                Margin="0,0,0,10"/>
+
+                    <!-- 버튼 영역 -->
+                    <StackPanel Grid.Row="2" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right">
+                        <Button x:Name="ClearButton" 
+                    Content="초기화" 
+                    Click="ClearButton_Click"
+                    Margin="0,0,10,0"
+                    MinWidth="80"/>
+                        <Button x:Name="RegisterButton" 
+                    Content="등록" 
+                    Click="RegisterButton_Click"
+                    MinWidth="80"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>
+    
+    
+    

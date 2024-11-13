@@ -39,6 +39,7 @@ namespace ActuLight.Pages
         private string selectedModel;
         private string selectedCell;
 
+        private Dictionary<string, (Sheet Sheet, bool IsLoaded)> _tabData = new Dictionary<string, (Sheet, bool)>();
         private bool _areFoldingsCollapsed = false;
 
         private MatchCollection cellMatches;
@@ -409,356 +410,7 @@ namespace ActuLight.Pages
             }  
         }
 
-        public void UpdateInvokes()
-        {
-            if (Models != null && selectedModel != null && Models.TryGetValue(selectedModel, out var model))
-            {
-                try
-                {
-                    // Clear all model sheets
-                    foreach (var m in Models.Values)
-                    {
-                        m.Clear();
-                    }
 
-                    // Process each Invoke call
-                    foreach (var (cellName, t) in invokeList)
-                    {
-                        model.Invoke(cellName, t);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
-                    model.Sheets.Clear();
-                    var errorSheet = new Sheet();
-                    errorSheet.ResisterExpression("Error", App.ModelEngine.Context.CompileGeneric<double>("0"));
-                    errorSheet.SetValue("Error", 0, 0);  // 에러 표시를 위한 더미 데이터
-
-                    // 에러 메시지를 별도의 메서드로 저장
-                    errorSheet.ResisterExpression("ErrorMessage", App.ModelEngine.Context.CompileGeneric<double>("0"));
-                    errorSheet.SetValue("ErrorMessage", 0, 0);
-
-                    model.Sheets["ErrorSheet"] = errorSheet;
-
-                    // CellStatusTextBlock 업데이트
-                    CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
-                }
-                finally
-                {
-                    SortSheets();
-                    UpdateSheets();
-                }
-            }
-            else
-            {
-                return;
-            }
-        }
-
-        public void UpdateSheets2()
-        {
-            
-            // 현재 선택된 탭의 이름 저장
-            string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
-
-            var currentTabs = new Dictionary<string, TabItem>();
-            foreach (TabItem tab in SheetTabControl.Items)
-            {
-                currentTabs[tab.Header.ToString()] = tab;
-            }
-
-            var updatedTabs = new List<TabItem>();
-
-            // 현재 모델의 시트들을 먼저 처리
-            if (Models.TryGetValue(selectedModel, out Model currentModel))
-            {
-                foreach (var sheetPair in currentModel.Sheets)
-                {
-                    if (currentTabs.TryGetValue(sheetPair.Key, out TabItem existingTab))
-                    {
-                        AddSheetTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value, existingTab);
-                        updatedTabs.Add(existingTab);
-                        currentTabs.Remove(sheetPair.Key);
-                    }
-                    else
-                    {
-                        var newTab = new TabItem();
-                        AddSheetTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value, newTab);
-                        updatedTabs.Add(newTab);
-                    }
-                }
-            }
-
-            // 다른 모델의 시트들을 처리
-            foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
-            {
-                foreach (var sheetPair in modelPair.Value.Sheets)
-                {
-                    if (currentTabs.TryGetValue(sheetPair.Key, out TabItem existingTab))
-                    {
-                        AddSheetTab(sheetPair.Key, sheetPair.Value, existingTab);
-                        updatedTabs.Add(existingTab);
-                        currentTabs.Remove(sheetPair.Key);
-                    }
-                    else
-                    {
-                        var newTab = new TabItem();
-                        AddSheetTab(sheetPair.Key, sheetPair.Value, newTab);
-                        updatedTabs.Add(newTab);
-                    }
-                }
-            }
-
-            // UI 스레드에서 TabControl 업데이트
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                // 더 이상 필요 없는 탭 제거
-                foreach (var oldTab in currentTabs.Values)
-                {
-                    SheetTabControl.Items.Remove(oldTab);
-                }
-
-                // 새로운 탭 추가 및 순서 조정
-                for (int i = 0; i < updatedTabs.Count; i++)
-                {
-                    if (!SheetTabControl.Items.Contains(updatedTabs[i]))
-                    {
-                        SheetTabControl.Items.Add(updatedTabs[i]);
-                    }
-                    if (SheetTabControl.Items.IndexOf(updatedTabs[i]) != i)
-                    {
-                        SheetTabControl.Items.Remove(updatedTabs[i]);
-                        SheetTabControl.Items.Insert(i, updatedTabs[i]);
-                    }
-                }
-
-                // 이전에 선택된 탭 또는 첫 번째 탭 선택
-                var tabToSelect = SheetTabControl.Items.Cast<TabItem>().FirstOrDefault(t => t.Header.ToString() == selectedTabName);
-                if (tabToSelect != null)
-                {
-                    tabToSelect.IsSelected = true;
-                }
-                else if (SheetTabControl.Items.Count > 0)
-                {
-                    (SheetTabControl.Items[0] as TabItem).IsSelected = true;
-                }
-            });
-
-            HighlightHeaders();
-        }
-
-        public void UpdateSheets()
-        {
-            try
-            {
-                // UI 스레드에서 실행되도록 전체 메서드를 래핑
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    // 현재 선택된 탭의 이름 저장
-                    string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
-
-                    // TabControl의 아이템을 한 번에 업데이트하기 위한 새로운 컬렉션
-                    var newItems = new ObservableCollection<TabItem>();
-
-                    // 현재 모델의 시트들을 처리
-                    if (Models.TryGetValue(selectedModel, out Model currentModel))
-                    {
-                        foreach (var sheetPair in currentModel.Sheets)
-                        {
-                            var tab = CreateOrUpdateTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value);
-                            newItems.Add(tab);
-                        }
-                    }
-
-                    // 다른 모델의 시트들을 처리
-                    foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
-                    {
-                        foreach (var sheetPair in modelPair.Value.Sheets)
-                        {
-                            var tab = CreateOrUpdateTab(sheetPair.Key, sheetPair.Value);
-                            newItems.Add(tab);
-                        }
-                    }
-
-                    // TabControl의 아이템을 한 번에 업데이트
-                    SheetTabControl.Items.Clear();
-                    foreach (var item in newItems)
-                    {
-                        SheetTabControl.Items.Add(item);
-                    }
-
-                    // 이전에 선택된 탭 복원
-                    var tabToSelect = SheetTabControl.Items.Cast<TabItem>()
-                        .FirstOrDefault(t => t.Header.ToString() == selectedTabName);
-
-                    if (tabToSelect != null)
-                    {
-                        tabToSelect.IsSelected = true;
-                    }
-                    else if (SheetTabControl.Items.Count > 0)
-                    {
-                        (SheetTabControl.Items[0] as TabItem).IsSelected = true;
-                    }
-
-                    HighlightHeaders();
-                }, System.Windows.Threading.DispatcherPriority.Render);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"UpdateSheets error: {ex.Message}");
-                // 필요한 예외 처리
-            }
-        }
-
-        private TabItem CreateOrUpdateTab(string header, Sheet sheet)
-        {
-            TabItem tab = new TabItem();
-            AddSheetTab(header, sheet, tab);
-            return tab;
-        }
-
-        private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)
-        {
-            DataGrid dataGrid;
-            if (tabItem.Content is DataGrid existingGrid)
-            {
-                dataGrid = existingGrid;
-                dataGrid.Columns.Clear();
-                dataGrid.ItemsSource = null;
-            }
-            else
-            {
-                dataGrid = new DataGrid
-                {
-                    AutoGenerateColumns = false,
-                    IsReadOnly = true,
-                    CanUserSortColumns = false,            
-                };
-                tabItem.Content = dataGrid;
-            }
-
-            if (sheetName == "ErrorSheet")
-            {
-                // ErrorSheet의 경우 에러 메시지를 표시
-                dataGrid.Columns.Add(new DataGridTextColumn
-                {
-                    Header = "Error Message",
-                    Binding = new System.Windows.Data.Binding("[ErrorMessage]")
-                });
-
-                var errorMessage = CellStatusTextBlock.Text;
-                var data = new List<Dictionary<string, string>>
-                {
-                    new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
-                };
-
-                dataGrid.ItemsSource = data;
-            }
-            else
-            {
-                var sheetData = sheet.GetAllData();
-                var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-                if (rows.Length > 0)
-                {
-                    var headers = rows[0].Split('\t');
-
-                    foreach (var header in headers)
-                    {
-                        var column = new DataGridTextColumn()
-                        {
-                            Header = new TextBlock { Text = header },
-                            Binding = new Binding($"[{header}]")
-                        };
-
-                        var binding = new Binding($"[{header}]");
-                        binding.Converter = new SignificantDigitsConverter(SignificantDigits);
-                        column.Binding = binding;
-
-
-                        // 컨텍스트 메뉴 이벤트 추가
-                        var existingHeaderStyle = column.HeaderStyle ?? dataGrid.ColumnHeaderStyle ?? Application.Current.TryFindResource(typeof(DataGridColumnHeader)) as Style;
-
-                        if (existingHeaderStyle != null)
-                        {
-                            var newHeaderStyle = new Style(typeof(DataGridColumnHeader), existingHeaderStyle);
-                            newHeaderStyle.Setters.Add(new EventSetter(DataGridColumnHeader.MouseDoubleClickEvent, new MouseButtonEventHandler(ColumnHeader_MouseDoubleClick)));
-                            column.HeaderStyle = newHeaderStyle;
-                        }
-
-                        dataGrid.Columns.Add(column);
-                    }
-
-                    var data = new List<Dictionary<string, string>>();
-
-                    for (int i = 1; i < rows.Length; i++)
-                    {
-                        var values = rows[i].Split('\t');
-                        var rowData = new Dictionary<string, string>();
-                        bool hasNonEmptyValue = false;
-
-                        for (int j = 0; j < headers.Length && j < values.Length; j++)
-                        {
-                            if (!string.IsNullOrWhiteSpace(values[j]))
-                            {
-                                rowData[headers[j]] = values[j];
-                                hasNonEmptyValue = true;
-                            }
-                        }
-
-                        if (hasNonEmptyValue)
-                        {
-                            data.Add(rowData);
-                        }
-                    }  
-
-                    dataGrid.ItemsSource = data;
-                }
-            }
-            App.ApplyTheme();
-            tabItem.Header = sheetName;
-        }
-
-        private void SortSheets()
-        {
-            var sortOption = App.SettingsManager.CurrentSettings.DataGridSortOption;
-
-            foreach (var model in Models.Values)
-            {
-                foreach(Sheet sheet in model.Sheets.Values)
-                {
-                    switch (sortOption)
-                    {
-                        case DataGridSortOption.CellDefinitionOrder:
-                            SortSheetByCellDefinition(model.Name, sheet);
-                            break;
-                        case DataGridSortOption.Alphabetical:
-                            sheet.SortCache(key => key);
-                            break;
-                            // Default case: 기존 순서 유지
-                    }
-                }
-            }
-        }
-
-        private void SortSheetByCellDefinition(string modelName, Sheet sheet)
-        {
-            if (!cellMatchesDict.ContainsKey(modelName))
-            {
-                return;
-            }
-
-            var cellOrder = cellMatchesDict[modelName].Cast<Match>()
-                .Select(m => m.Groups["cellName"].Value)
-                .ToList();
-
-            sheet.SortCache(key =>
-            {
-                int index = cellOrder.IndexOf(key);
-                return index >= 0 ? index : int.MaxValue;
-            });
-        }
 
         private void UpdateSyntaxHighlighter()
         {
@@ -1369,6 +1021,500 @@ namespace ActuLight.Pages
 
             detailWindow.Content = grid;
             detailWindow.Show();
+        }
+
+
+        //탭 업데이트 
+        public void UpdateInvokes()
+        {
+            if (Models != null && selectedModel != null && Models.TryGetValue(selectedModel, out var model))
+            {
+                try
+                {
+                    // Clear all model sheets
+                    foreach (var m in Models.Values)
+                    {
+                        m.Clear();
+                    }
+
+                    // Process each Invoke call
+                    foreach (var (cellName, t) in invokeList)
+                    {
+                        model.Invoke(cellName, t);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 에러 발생 시 모든 시트를 지우고 ErrorSheet만 생성
+                    model.Sheets.Clear();
+                    var errorSheet = new Sheet();
+                    errorSheet.ResisterExpression("Error", App.ModelEngine.Context.CompileGeneric<double>("0"));
+                    errorSheet.SetValue("Error", 0, 0);  // 에러 표시를 위한 더미 데이터
+
+                    // 에러 메시지를 별도의 메서드로 저장
+                    errorSheet.ResisterExpression("ErrorMessage", App.ModelEngine.Context.CompileGeneric<double>("0"));
+                    errorSheet.SetValue("ErrorMessage", 0, 0);
+
+                    model.Sheets["ErrorSheet"] = errorSheet;
+
+                    // CellStatusTextBlock 업데이트
+                    CellStatusTextBlock.Text = $"Error during Invoke: {ex.Message}";
+                }
+                finally
+                {
+                    SortSheets();
+                    UpdateSheets();
+                }
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        public void UpdateSheets2()
+        {
+            try
+            {
+                // UI 스레드에서 실행되도록 전체 메서드를 래핑
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    // 현재 선택된 탭의 이름 저장
+                    string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
+
+                    // TabControl의 아이템을 한 번에 업데이트하기 위한 새로운 컬렉션
+                    var newItems = new ObservableCollection<TabItem>();
+
+                    // 현재 모델의 시트들을 처리
+                    if (Models.TryGetValue(selectedModel, out Model currentModel))
+                    {
+                        foreach (var sheetPair in currentModel.Sheets)
+                        {
+                            var tab = CreateOrUpdateTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value);
+                            newItems.Add(tab);
+                        }
+                    }
+
+                    // 다른 모델의 시트들을 처리
+                    foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
+                    {
+                        foreach (var sheetPair in modelPair.Value.Sheets)
+                        {
+                            var tab = CreateOrUpdateTab(sheetPair.Key, sheetPair.Value);
+                            newItems.Add(tab);
+                        }
+                    }
+
+                    // TabControl의 아이템을 한 번에 업데이트
+                    SheetTabControl.Items.Clear();
+                    foreach (var item in newItems)
+                    {
+                        SheetTabControl.Items.Add(item);
+                    }
+
+                    // 이전에 선택된 탭 복원
+                    var tabToSelect = SheetTabControl.Items.Cast<TabItem>()
+                        .FirstOrDefault(t => t.Header.ToString() == selectedTabName);
+
+                    if (tabToSelect != null)
+                    {
+                        tabToSelect.IsSelected = true;
+                    }
+                    else if (SheetTabControl.Items.Count > 0)
+                    {
+                        (SheetTabControl.Items[0] as TabItem).IsSelected = true;
+                    }
+
+                    HighlightHeaders();
+                    UpdateParameterGroups();
+                }, System.Windows.Threading.DispatcherPriority.Render);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"UpdateSheets error: {ex.Message}");
+                // 필요한 예외 처리
+            }
+        }
+
+        public void UpdateSheets()
+        {
+            string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
+            var currentTabs = new Dictionary<string, TabItem>();
+            foreach (TabItem tab in SheetTabControl.Items)
+            {
+                currentTabs[tab.Header.ToString()] = tab;
+            }
+
+            var updatedTabs = new List<TabItem>();
+            _tabData.Clear();
+
+            // 현재 모델의 시트들을 먼저 처리
+            if (Models.TryGetValue(selectedModel, out Model currentModel))
+            {
+                foreach (var sheetPair in currentModel.Sheets)
+                {
+                    string tabName = sheetPair.Key.Replace(";", ":");
+                    _tabData[tabName] = (sheetPair.Value, false);
+
+                    if (currentTabs.TryGetValue(tabName, out TabItem existingTab))
+                    {
+                        // 탭은 유지하되 내용은 지연 로딩을 위해 초기화
+                        InitializeEmptyTab(tabName, existingTab);
+                        updatedTabs.Add(existingTab);
+                        currentTabs.Remove(tabName);
+                    }
+                    else
+                    {
+                        var newTab = new TabItem();
+                        InitializeEmptyTab(tabName, newTab);
+                        updatedTabs.Add(newTab);
+                    }
+                }
+            }
+
+            // 다른 모델의 시트들 처리
+            foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
+            {
+                foreach (var sheetPair in modelPair.Value.Sheets)
+                {
+                    string tabName = sheetPair.Key;
+                    _tabData[tabName] = (sheetPair.Value, false);
+
+                    if (currentTabs.TryGetValue(tabName, out TabItem existingTab))
+                    {
+                        InitializeEmptyTab(tabName, existingTab);
+                        updatedTabs.Add(existingTab);
+                        currentTabs.Remove(tabName);
+                    }
+                    else
+                    {
+                        var newTab = new TabItem();
+                        InitializeEmptyTab(tabName, newTab);
+                        updatedTabs.Add(newTab);
+                    }
+                }
+            }
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                foreach (var oldTab in currentTabs.Values)
+                {
+                    SheetTabControl.Items.Remove(oldTab);
+                }
+
+                for (int i = 0; i < updatedTabs.Count; i++)
+                {
+                    if (!SheetTabControl.Items.Contains(updatedTabs[i]))
+                    {
+                        SheetTabControl.Items.Add(updatedTabs[i]);
+                    }
+                    if (SheetTabControl.Items.IndexOf(updatedTabs[i]) != i)
+                    {
+                        SheetTabControl.Items.Remove(updatedTabs[i]);
+                        SheetTabControl.Items.Insert(i, updatedTabs[i]);
+                    }
+                }
+
+                // 이전 선택 탭 복원
+                var tabToSelect = SheetTabControl.Items.Cast<TabItem>()
+                    .FirstOrDefault(t => t.Header.ToString() == selectedTabName);
+                if (tabToSelect != null)
+                {
+                    tabToSelect.IsSelected = true;
+                    LoadTabData(tabToSelect); // 선택된 탭의 데이터 로드
+                }
+                else if (SheetTabControl.Items.Count > 0)
+                {
+                    (SheetTabControl.Items[0] as TabItem).IsSelected = true;
+                    LoadTabData(SheetTabControl.Items[0] as TabItem);
+                }
+            });
+
+            UpdateParameterGroups();
+            HighlightHeaders();
+        }
+
+        private void InitializeEmptyTab(string tabName, TabItem tab)
+        {
+            tab.Header = tabName;
+            var loadingGrid = new Grid();
+            loadingGrid.Children.Add(new TextBlock
+            {
+                Text = "Click to load data",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            tab.Content = loadingGrid;
+        }
+
+        private void LoadTabData(TabItem tab)
+        {
+            string tabName = tab.Header.ToString();
+            if (!_tabData.TryGetValue(tabName, out var tabInfo) || tabInfo.IsLoaded)
+                return;
+
+            var dataGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true,
+                CanUserSortColumns = false
+            };
+
+            AddSheetTab(tabName, tabInfo.Sheet, tab);
+            _tabData[tabName] = (tabInfo.Sheet, true);
+        }
+
+        private void SheetTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.AddedItems.Count > 0 && e.AddedItems[0] is TabItem newTab)
+            {
+                LoadTabData(newTab);
+            }
+        }
+
+        private TabItem CreateOrUpdateTab(string header, Sheet sheet)
+        {
+            TabItem tab = new TabItem();
+            AddSheetTab(header, sheet, tab);
+            return tab;
+        }
+
+        private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)
+        {
+            DataGrid dataGrid;
+            if (tabItem.Content is DataGrid existingGrid)
+            {
+                dataGrid = existingGrid;
+                dataGrid.Columns.Clear();
+                dataGrid.ItemsSource = null;
+            }
+            else
+            {
+                dataGrid = new DataGrid
+                {
+                    AutoGenerateColumns = false,
+                    IsReadOnly = true,
+                    CanUserSortColumns = false,
+                };
+                tabItem.Content = dataGrid;
+            }
+
+            if (sheetName == "ErrorSheet")
+            {
+                // ErrorSheet의 경우 에러 메시지를 표시
+                dataGrid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = "Error Message",
+                    Binding = new System.Windows.Data.Binding("[ErrorMessage]")
+                });
+
+                var errorMessage = CellStatusTextBlock.Text;
+                var data = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["ErrorMessage"] = errorMessage }
+                };
+
+                dataGrid.ItemsSource = data;
+            }
+            else
+            {
+                var sheetData = sheet.GetAllData();
+                var rows = sheetData.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+
+                if (rows.Length > 0)
+                {
+                    var headers = rows[0].Split('\t');
+
+                    foreach (var header in headers)
+                    {
+                        var column = new DataGridTextColumn()
+                        {
+                            Header = new TextBlock { Text = header },
+                            Binding = new Binding($"[{header}]")
+                        };
+
+                        var binding = new Binding($"[{header}]");
+                        binding.Converter = new SignificantDigitsConverter(SignificantDigits);
+                        column.Binding = binding;
+
+
+                        // 컨텍스트 메뉴 이벤트 추가
+                        var existingHeaderStyle = column.HeaderStyle ?? dataGrid.ColumnHeaderStyle ?? Application.Current.TryFindResource(typeof(DataGridColumnHeader)) as Style;
+
+                        if (existingHeaderStyle != null)
+                        {
+                            var newHeaderStyle = new Style(typeof(DataGridColumnHeader), existingHeaderStyle);
+                            newHeaderStyle.Setters.Add(new EventSetter(DataGridColumnHeader.MouseDoubleClickEvent, new MouseButtonEventHandler(ColumnHeader_MouseDoubleClick)));
+                            column.HeaderStyle = newHeaderStyle;
+                        }
+
+                        dataGrid.Columns.Add(column);
+                    }
+
+                    var data = new List<Dictionary<string, string>>();
+
+                    for (int i = 1; i < rows.Length; i++)
+                    {
+                        var values = rows[i].Split('\t');
+                        var rowData = new Dictionary<string, string>();
+                        bool hasNonEmptyValue = false;
+
+                        for (int j = 0; j < headers.Length && j < values.Length; j++)
+                        {
+                            if (!string.IsNullOrWhiteSpace(values[j]))
+                            {
+                                rowData[headers[j]] = values[j];
+                                hasNonEmptyValue = true;
+                            }
+                        }
+
+                        if (hasNonEmptyValue)
+                        {
+                            data.Add(rowData);
+                        }
+                    }
+
+                    dataGrid.ItemsSource = data;
+                }
+            }
+            App.ApplyTheme();
+            tabItem.Header = sheetName;
+        }
+
+        private void SortSheets()
+        {
+            var sortOption = App.SettingsManager.CurrentSettings.DataGridSortOption;
+
+            foreach (var model in Models.Values)
+            {
+                foreach (Sheet sheet in model.Sheets.Values)
+                {
+                    switch (sortOption)
+                    {
+                        case DataGridSortOption.CellDefinitionOrder:
+                            SortSheetByCellDefinition(model.Name, sheet);
+                            break;
+                        case DataGridSortOption.Alphabetical:
+                            sheet.SortCache(key => key);
+                            break;
+                            // Default case: 기존 순서 유지
+                    }
+                }
+            }
+        }
+
+        private void SortSheetByCellDefinition(string modelName, Sheet sheet)
+        {
+            if (!cellMatchesDict.ContainsKey(modelName))
+            {
+                return;
+            }
+
+            var cellOrder = cellMatchesDict[modelName].Cast<Match>()
+                .Select(m => m.Groups["cellName"].Value)
+                .ToList();
+
+            sheet.SortCache(key =>
+            {
+                int index = cellOrder.IndexOf(key);
+                return index >= 0 ? index : int.MaxValue;
+            });
+        }
+
+
+        //탭 컨트롤 필터
+        private void ParameterGroupComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ParameterGroupComboBox.SelectedItem == null) return;
+
+            string selectedGroup = ParameterGroupComboBox.SelectedItem.ToString();
+            UpdateTabVisibility(selectedGroup);
+        }
+
+        private void UpdateTabVisibility(string selectedGroup)
+        {
+            foreach (TabItem tab in SheetTabControl.Items)
+            {
+                string tabName = tab.Header.ToString();
+                string group = GetParameterGroup(tabName);
+
+                if (selectedGroup == "All")
+                {
+                    tab.Visibility = Visibility.Visible;
+                }
+                else if (selectedGroup == "Base")
+                {
+                    tab.Visibility = group == "Base" ? Visibility.Visible : Visibility.Collapsed;
+                }
+                else
+                {
+                    tab.Visibility = group == selectedGroup ? Visibility.Visible : Visibility.Collapsed;
+                }
+            }
+        }
+
+        private void UpdateParameterGroups()
+        {
+            var groups = new HashSet<string> { "All", "Base" };
+
+            foreach (TabItem tab in SheetTabControl.Items)
+            {
+                string tabName = tab.Header.ToString();
+                string group = GetParameterGroup(tabName);
+                if (!string.IsNullOrEmpty(group) && group != "Base")
+                {
+                    groups.Add(group);
+                }
+            }
+
+            // 현재 선택된 항목 저장
+            var currentSelection = ParameterGroupComboBox.SelectedItem?.ToString();
+
+            // ComboBox 아이템 업데이트 (SelectionChanged 이벤트 발생 방지)
+            ParameterGroupComboBox.SelectionChanged -= ParameterGroupComboBox_SelectionChanged;
+
+            var orderedGroups = groups.OrderBy(g => g == "All" ? 0 : g == "Base" ? 1 : 2)
+                                     .ThenBy(g => g.Split(':')[0])
+                                     .ThenBy(g => g.Replace(g.Split(':')[0] + ":", "").PadLeft(10, '0'));
+
+            ParameterGroupComboBox.ItemsSource = orderedGroups;
+
+            // 선택 상태 처리
+            if (!string.IsNullOrEmpty(currentSelection))
+            {
+                if (currentSelection == "All" || currentSelection == "Base")
+                {
+                    ParameterGroupComboBox.SelectedItem = currentSelection;
+                    UpdateTabVisibility(currentSelection); // 명시적으로 탭 가시성 업데이트
+                }
+                else if (groups.Contains(currentSelection))
+                {
+                    ParameterGroupComboBox.SelectedItem = currentSelection;
+                    UpdateTabVisibility(currentSelection);
+                }
+                else
+                {
+                    ParameterGroupComboBox.SelectedItem = "Base";
+                    UpdateTabVisibility("Base");
+                }
+            }
+            else
+            {
+                ParameterGroupComboBox.SelectedItem = "Base";
+                UpdateTabVisibility("Base");
+            }
+
+            // SelectionChanged 이벤트 핸들러 다시 연결
+            ParameterGroupComboBox.SelectionChanged += ParameterGroupComboBox_SelectionChanged;
+        }
+
+        private string GetParameterGroup(string tabName)
+        {
+            var match = Regex.Match(tabName, @"{([^}]+)}");
+            if (!match.Success) return "Base";
+
+            // 전체 파라미터를 그룹으로 사용
+            return match.Groups[1].Value.Trim();
         }
     }
 

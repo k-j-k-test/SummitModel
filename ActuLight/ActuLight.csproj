@@ -19,6 +19,7 @@
   
   <ItemGroup>
     <None Remove="AutoCompletion.json" />
+    <None Remove="risk_rates_postguide.xlsx" />
     <None Remove="version.json" />
   </ItemGroup>
   
@@ -48,6 +49,12 @@
   <ItemGroup>
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.Net.Http" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Include="risk_rates_postguide.xlsx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
   
   <ItemGroup>

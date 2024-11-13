@@ -239,6 +239,8 @@ namespace ActuLight.Pages
 
         private void ApplyFilter(string filterText)
         {
+            if (MainDataGrid.ItemsSource == null) return;
+
             if (string.IsNullOrWhiteSpace(filterText))
             {
                 MainDataGrid.ItemsSource = originalData;

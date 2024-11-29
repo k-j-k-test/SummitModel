@@ -18,6 +18,7 @@ namespace ActuLight.Pages
         private CartesianChart chart;
         private List<AssumptionDisplayData> originalData;
         private bool isSearching = false;
+        private RiskRateManagementWindow searchWindow;
 
         public AssumptionPage()
         {
@@ -328,11 +329,27 @@ namespace ActuLight.Pages
 
         private void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            var searchWindow = new RiskRateManagementWindow();
-            if (searchWindow.ShowDialog() == true)
+            // 윈도우가 이미 존재하는지 확인
+            if (searchWindow == null || !searchWindow.IsLoaded)
             {
+                searchWindow = new RiskRateManagementWindow();
 
+                // 새 창이 닫힐 때 이벤트 처리
+                searchWindow.Closed += (s, args) => searchWindow = null;
+
+                // 모달리스로 창 표시
+                searchWindow.Show();
+            }
+            else
+            {
+                // 이미 열려있는 창을 활성화
+                searchWindow.Activate();
+
+                // 필요한 경우 창을 최상위로 가져오기
+                if (searchWindow.WindowState == WindowState.Minimized)
+                    searchWindow.WindowState = WindowState.Normal;
             }
         }
+
     }
 }

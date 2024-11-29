@@ -14,6 +14,9 @@ using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 using System.Windows.Documents;
 using Newtonsoft.Json;
+using Microsoft.CSharp;
+using System.CodeDom.Compiler;
+using Flee.PublicTypes;
 
 namespace ActuLight.Pages
 {
@@ -52,6 +55,7 @@ namespace ActuLight.Pages
             {
                 await LoadExcelFileAsync(openFileDialog.FileName);
             }
+            
         }
 
         private void InitializeFileCheckTimer()
@@ -120,6 +124,18 @@ namespace ActuLight.Pages
                         await (mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
                     }
 
+                    // ExternalDataPage의 LoadDataAsync 메서드 호출
+                    string ExternalDataPageDir = "Pages/ExternalDataPage.xaml";
+                    if (mainWindow.pageCache.TryGetValue(ExternalDataPageDir, out Page externalDataPage))
+                    {
+                        await (externalDataPage as ExternalDataPage).LoadDataAsync();
+                    }
+                    else
+                    {
+                        mainWindow.pageCache[ExternalDataPageDir] = new ExternalDataPage();
+                        await (mainWindow.pageCache[ExternalDataPageDir] as ExternalDataPage).LoadDataAsync();
+                    }
+
                     // OutputPage의 LoadDataAsync 메서드 호출
                     string OutputPageDir = "Pages/OutputPage.xaml";
                     if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
@@ -160,6 +176,27 @@ namespace ActuLight.Pages
 
                 currentFilePath = filePath;
                 currentFileLastWriteTime = File.GetLastWriteTime(filePath);
+
+                // 기본 디렉토리 구조 생성
+                string excelName = Path.GetFileNameWithoutExtension(filePath);
+                string baseDirectory = Path.Combine(Path.GetDirectoryName(filePath), $"Data_{excelName}");
+
+                var directories = new[]
+                {
+                    baseDirectory,
+                    Path.Combine(baseDirectory, "Scripts"),
+                    Path.Combine(baseDirectory, "Samples"),
+                    Path.Combine(baseDirectory, "Outputs"),
+                    Path.Combine(baseDirectory, "ExternalData")
+                };
+
+                foreach (var directory in directories)
+                {
+                    if (!Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+                }
 
                 UpdateStatusMessage($"엑셀 파일이 성공적으로 연결되었습니다. 파일 경로: {filePath}", true);
                 SelectedFilePath = filePath;
@@ -228,8 +265,13 @@ namespace ActuLight.Pages
             if (existingFile != null)
             {
                 recentFiles.Remove(existingFile);
+                recentFiles.Insert(0, new RecentFile(filePath));
             }
-            recentFiles.Insert(0, new RecentFile(filePath));
+            else
+            {
+                recentFiles.Insert(0, new RecentFile(filePath));
+            }
+
             if (recentFiles.Count > 100)
             {
                 recentFiles.RemoveAt(recentFiles.Count - 1);
@@ -296,6 +338,18 @@ namespace ActuLight.Pages
             {
                 mainWindow.pageCache[AssumptionPageDir] = new AssumptionPage();
                 await(mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
+            }
+
+            // ExternalDataPage의 LoadDataAsync 메서드 호출
+            string ExternalDataPageDir = "Pages/ExternalDataPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(ExternalDataPageDir, out Page externalDataPage))
+            {
+                await (externalDataPage as ExternalDataPage).LoadDataAsync();
+            }
+            else
+            {
+                mainWindow.pageCache[ExternalDataPageDir] = new ExternalDataPage();
+                await (mainWindow.pageCache[ExternalDataPageDir] as ExternalDataPage).LoadDataAsync();
             }
 
             // OutputPage의 LoadDataAsync 메서드 호출
@@ -442,7 +496,8 @@ namespace ActuLight.Pages
             LastUsed = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         }
 
-        // 파라미터 없는 생성자 (JSON 역직렬화를 위해 필요)
-        public RecentFile() { }
+        public RecentFile() { } // JSON 역직렬화용 생성자
     }
+
+
 }

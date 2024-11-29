@@ -84,6 +84,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="LTFHelper.cs" />
     <Compile Include="Model.cs" />
     <Compile Include="InputModels.cs" />
     <Compile Include="ExcelHelper.cs" />

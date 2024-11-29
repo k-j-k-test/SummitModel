@@ -72,10 +72,14 @@ namespace ActuLight
                     return new ModelPointPage();
                 case "Pages/AssumptionPage.xaml":
                     return new AssumptionPage();
+                case "Pages/ExternalDataPage.xaml":
+                    return new ExternalDataPage();
                 case "Pages/SpreadsheetPage.xaml":
                     return new SpreadSheetPage();
                 case "Pages/OutputPage.xaml":
                     return new OutputPage();
+                case "Pages/DataProcessingPage.xaml":
+                    return new DataProcessingPage();
                 case "Pages/SettingsPage.xaml":
                     return new SettingsPage();
                 default:

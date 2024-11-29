@@ -11,8 +11,10 @@
             <ui:NavigationViewItem x:Name="FileButton" Content="파일" Icon="Document" Tag="file" MouseDown="FileButton_Click"/>
             <ui:NavigationViewItem x:Name="ModelPointButton" Content="모델포인트" Icon="AllApps" Tag="modelpoint" MouseDown="ModelPointButton_Click"/>
             <ui:NavigationViewItem x:Name="AssumptionButton" Content="가정" Icon="Bookmarks" Tag="assumption" MouseDown="AssumptionButton_Click"/>
+            <ui:NavigationViewItem x:Name="ExternalDataButton" Content="외부데이터" Icon="Globe" Tag="externaldata" MouseDown="ExternalDataButton_Click"/>
             <ui:NavigationViewItem x:Name="SpreadsheetButton" Content="스프레드시트" Icon="ViewAll" Tag="spreadsheet" MouseDown="SpreadsheetButton_Click"/>
             <ui:NavigationViewItem x:Name="OutputButton" Content="출력" Icon="Share" Tag="output" MouseDown="OutputButton_Click"/>
+            <ui:NavigationViewItem x:Name="DataProcessButton" Content="데이터처리" Icon="List" Tag="dataprocess" MouseDown="DataProcessButton_Click"/>
             <ui:NavigationViewItem x:Name="SettingsButton" Content="설정" Icon="Setting" Tag="settings" MouseDown="SettingsButton_Click"/>
         </ui:NavigationView.MenuItems>
     </ui:NavigationView>

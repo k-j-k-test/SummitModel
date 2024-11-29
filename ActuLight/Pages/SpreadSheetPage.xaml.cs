@@ -30,7 +30,6 @@ namespace ActuLight.Pages
         public SyntaxHighlighter SyntaxHighlighter;
         public RegionFoldingStrategy FoldingStrategy;
         public FoldingManager FoldingManager;
-        private ScriptEditorEnhancer editorEnhancer;
 
         public Dictionary<string, Model> Models = App.ModelEngine.Models;
         public Dictionary<string, string> Scripts { get; set; } = new Dictionary<string, string>();
@@ -71,9 +70,6 @@ namespace ActuLight.Pages
             ScriptEditor.Options.EnableEmailHyperlinks = true;
             ScriptEditor.Options.ConvertTabsToSpaces = true;
 
-            // ScriptEditorEnhancer 초기화
-            editorEnhancer = new ScriptEditorEnhancer(ScriptEditor);
-
             //텍스트 변경 이벤트
             ScriptEditor.TextChanged += ScriptEditor_TextChanged;
             ScriptEditor.Options.ShowSpaces = false;
@@ -98,10 +94,6 @@ namespace ActuLight.Pages
             LoadingOverlay.Visibility = Visibility.Visible;
             try
             {
-                Models.Clear();
-                Scripts.Clear();
-                ScriptEditor.Text = string.Empty;
-
                 string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
                 string modelsFolder = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Scripts");
                 if (!Directory.Exists(modelsFolder))
@@ -135,6 +127,7 @@ namespace ActuLight.Pages
                     });
 
                     // 컴파일 실행
+                    ScriptEditor.Text = string.Empty;
                     ModelsList.SelectedIndex = -1;
                     selectedModel = null;
                     for (int i = Models.Count - 1; i >= 0; i--)
@@ -410,8 +403,6 @@ namespace ActuLight.Pages
             }  
         }
 
-
-
         private void UpdateSyntaxHighlighter()
         {
             foreach (var model in Models.Values)
@@ -607,223 +598,6 @@ namespace ActuLight.Pages
                 ModelsList.SelectedIndex = newIndex;
 
                 UpdateSyntaxHighlighter();
-            }
-        }
-
-        public void SaveScripts(bool IsAuto, int AutoNum = 0)
-        {
-            try
-            {
-                Scripts[ModelsList.SelectedItem.ToString()] = ScriptEditor.Text;
-
-                string excelFilePath = FilePage.SelectedFilePath;
-                if (string.IsNullOrEmpty(excelFilePath))
-                {
-                    if (!IsAuto)
-                    {
-                        MessageBox.Show("먼저 엑셀 파일을 선택해주세요.", "파일 선택 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                    return;
-                }
-
-                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
-                string modelsFolder = Path.Combine(Path.GetDirectoryName(excelFilePath), @$"Data_{excelName}\Scripts");
-                if (!Directory.Exists(modelsFolder))
-                {
-                    Directory.CreateDirectory(modelsFolder);
-                }
-
-                string json = JsonConvert.SerializeObject(Scripts, Formatting.Indented);
-                string fileName;
-
-                if (IsAuto)
-                {
-                    // 자동 저장 모드
-                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto{AutoNum}.json");
-                    File.WriteAllText(fileName, json);
-                }
-                else
-                {
-                    // 수동 저장 모드
-                    string baseFileName = Path.GetFileNameWithoutExtension(excelFilePath) + "_scripts";
-                    int nextVersion = GetNextVersion(modelsFolder, baseFileName);
-                    string defaultFileName = $"{baseFileName}_v{nextVersion}.json";
-
-                    SaveFileDialog saveFileDialog = new SaveFileDialog
-                    {
-                        InitialDirectory = modelsFolder,
-                        Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-                        FilterIndex = 1,
-                        RestoreDirectory = true,
-                        FileName = defaultFileName
-                    };
-
-                    if (saveFileDialog.ShowDialog() == true)
-                    {
-                        fileName = saveFileDialog.FileName;
-                        File.WriteAllText(fileName, json);
-                        MessageBox.Show($"모델이 성공적으로 저장되었습니다: {fileName}", "저장 성공", MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                    else
-                    {
-                        // 사용자가 저장을 취소한 경우
-                        return;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!IsAuto)
-                {
-                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                // 자동 저장 모드에서는 오류 메시지를 표시하지 않습니다.
-            }
-
-            int GetNextVersion(string folder, string baseFileName)
-            {
-                int maxVersion = 0;
-                string[] files = Directory.GetFiles(folder, $"{baseFileName}_v*.json");
-
-                foreach (string file in files)
-                {
-                    string fileName = Path.GetFileNameWithoutExtension(file);
-                    if (fileName.EndsWith(".json"))
-                    {
-                        fileName = fileName.Substring(0, fileName.Length - 5);
-                    }
-                    string versionStr = fileName.Substring(fileName.LastIndexOf('v') + 1);
-                    if (int.TryParse(versionStr, out int version))
-                    {
-                        maxVersion = Math.Max(maxVersion, version);
-                    }
-                }
-
-                return maxVersion + 1;
-            }
-        }
-
-        private void SetupAutoSaveTimer()
-        {
-            autoSaveTimer = new DispatcherTimer();
-            autoSaveTimer.Interval = TimeSpan.FromSeconds(5);
-            autoSaveTimer.Tick += AutoSaveTimer_Tick;
-            autoSaveTimer.Start();
-        }
-
-        private void AutoSaveTimer_Tick(object sender, EventArgs e)
-        {
-            autoSaveTickCounter++;
-
-            if (autoSaveTickCounter % 60 == 0)
-            {
-                SaveScripts(true, 2);
-            }
-            else
-            {
-                if (scriptChanged) SaveScripts(true, 1);
-            }
-            scriptChanged = false;
-        }
-
-        private void ScriptEditor_PreviewKeyDown_Save(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                try
-                {
-                    e.Handled = true;
-                    SaveScripts(false);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-        }
-
-        private void ScriptEditor_PreviewKeyDown_Region(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                try
-                {
-                    e.Handled = true;
-                    var document = ScriptEditor.Document;
-                    var offset = ScriptEditor.CaretOffset;
-                    var line = document.GetLineByOffset(offset);
-                    var lineText = document.GetText(line.Offset, line.Length);
-                    var indent = new string(' ', lineText.TakeWhile(char.IsWhiteSpace).Count());
-
-                    var region = $"{indent}#region New Region\n{indent}\n{indent}#endregion";
-                    document.Insert(line.Offset, region);
-
-                    ScriptEditor.Select(line.Offset + indent.Length + 8, 10); // Select "New Region"
-                }
-                catch
-                {
-
-                }
-            }
-        }
-
-        private void ScriptEditor_PreviewKeyDown_Folding(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                try
-                {
-                    e.Handled = true;
-                    ToggleAllFoldings();
-                }
-                catch
-                {
-
-                }
-            }
-        }
-
-        private void ScriptEditor_PreviewKeyDown_Zoom(object sender, KeyEventArgs e)
-        {
-            if (Keyboard.Modifiers == ModifierKeys.Control)
-            {
-                try
-                {
-                    switch (e.Key)
-                    {
-                        case Key.OemPlus:
-                        case Key.Add:
-                            e.Handled = true;
-                            AdjustScriptEditorFontSize(true);
-                            break;
-
-                        case Key.OemMinus:
-                        case Key.Subtract:
-                            e.Handled = true;
-                            AdjustScriptEditorFontSize(false);
-                            break;
-                    }
-                }
-                catch
-                {
-
-                }
-
-            }
-        }
-
-        private void ScriptEditor_PreviewKeyDown_Renew(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.F5)
-            {
-                try
-                {
-                    UpdateInvokes();
-                }
-                catch
-                {
-
-                }
             }
         }
 
@@ -1024,6 +798,227 @@ namespace ActuLight.Pages
         }
 
 
+        //Save 관련
+        public void SaveScripts(bool IsAuto, int AutoNum = 0)
+        {
+            try
+            {
+                Scripts[ModelsList.SelectedItem.ToString()] = ScriptEditor.Text;
+
+                string excelFilePath = FilePage.SelectedFilePath;
+                if (string.IsNullOrEmpty(excelFilePath))
+                {
+                    if (!IsAuto)
+                    {
+                        MessageBox.Show("먼저 엑셀 파일을 선택해주세요.", "파일 선택 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    return;
+                }
+
+                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
+                string modelsFolder = Path.Combine(Path.GetDirectoryName(excelFilePath), @$"Data_{excelName}\Scripts");
+                if (!Directory.Exists(modelsFolder))
+                {
+                    Directory.CreateDirectory(modelsFolder);
+                }
+
+                string json = JsonConvert.SerializeObject(Scripts, Formatting.Indented);
+                string fileName;
+
+                if (IsAuto)
+                {
+                    // 자동 저장 모드
+                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto{AutoNum}.json");
+                    File.WriteAllText(fileName, json);
+                }
+                else
+                {
+                    // 수동 저장 모드
+                    string baseFileName = Path.GetFileNameWithoutExtension(excelFilePath) + "_scripts";
+                    int nextVersion = GetNextVersion(modelsFolder, baseFileName);
+                    string defaultFileName = $"{baseFileName}_v{nextVersion}.json";
+
+                    SaveFileDialog saveFileDialog = new SaveFileDialog
+                    {
+                        InitialDirectory = modelsFolder,
+                        Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                        FilterIndex = 1,
+                        RestoreDirectory = true,
+                        FileName = defaultFileName
+                    };
+
+                    if (saveFileDialog.ShowDialog() == true)
+                    {
+                        fileName = saveFileDialog.FileName;
+                        File.WriteAllText(fileName, json);
+                        MessageBox.Show($"모델이 성공적으로 저장되었습니다: {fileName}", "저장 성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        // 사용자가 저장을 취소한 경우
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsAuto)
+                {
+                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                // 자동 저장 모드에서는 오류 메시지를 표시하지 않습니다.
+            }
+
+            int GetNextVersion(string folder, string baseFileName)
+            {
+                int maxVersion = 0;
+                string[] files = Directory.GetFiles(folder, $"{baseFileName}_v*.json");
+
+                foreach (string file in files)
+                {
+                    string fileName = Path.GetFileNameWithoutExtension(file);
+                    if (fileName.EndsWith(".json"))
+                    {
+                        fileName = fileName.Substring(0, fileName.Length - 5);
+                    }
+                    string versionStr = fileName.Substring(fileName.LastIndexOf('v') + 1);
+                    if (int.TryParse(versionStr, out int version))
+                    {
+                        maxVersion = Math.Max(maxVersion, version);
+                    }
+                }
+
+                return maxVersion + 1;
+            }
+        }
+
+        private void SetupAutoSaveTimer()
+        {
+            autoSaveTimer = new DispatcherTimer();
+            autoSaveTimer.Interval = TimeSpan.FromSeconds(5);
+            autoSaveTimer.Tick += AutoSaveTimer_Tick;
+            autoSaveTimer.Start();
+        }
+
+        private void AutoSaveTimer_Tick(object sender, EventArgs e)
+        {
+            autoSaveTickCounter++;
+
+            if (autoSaveTickCounter % 60 == 0)
+            {
+                SaveScripts(true, 2);
+            }
+            else
+            {
+                if (scriptChanged) SaveScripts(true, 1);
+            }
+            scriptChanged = false;
+        }
+
+
+        //키 다운 이벤트
+        private void ScriptEditor_PreviewKeyDown_Save(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                try
+                {
+                    e.Handled = true;
+                    SaveScripts(false);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"모델 저장 중 오류 발생: {ex.Message}", "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Region(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                try
+                {
+                    e.Handled = true;
+                    var document = ScriptEditor.Document;
+                    var offset = ScriptEditor.CaretOffset;
+                    var line = document.GetLineByOffset(offset);
+                    var lineText = document.GetText(line.Offset, line.Length);
+                    var indent = new string(' ', lineText.TakeWhile(char.IsWhiteSpace).Count());
+
+                    var region = $"{indent}#region New Region\n{indent}\n{indent}#endregion";
+                    document.Insert(line.Offset, region);
+
+                    ScriptEditor.Select(line.Offset + indent.Length + 8, 10); // Select "New Region"
+                }
+                catch
+                {
+
+                }
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Folding(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                try
+                {
+                    e.Handled = true;
+                    ToggleAllFoldings();
+                }
+                catch
+                {
+
+                }
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Zoom(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                try
+                {
+                    switch (e.Key)
+                    {
+                        case Key.OemPlus:
+                        case Key.Add:
+                            e.Handled = true;
+                            AdjustScriptEditorFontSize(true);
+                            break;
+
+                        case Key.OemMinus:
+                        case Key.Subtract:
+                            e.Handled = true;
+                            AdjustScriptEditorFontSize(false);
+                            break;
+                    }
+                }
+                catch
+                {
+
+                }
+
+            }
+        }
+
+        private void ScriptEditor_PreviewKeyDown_Renew(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F5)
+            {
+                try
+                {
+                    UpdateInvokes();
+                }
+                catch
+                {
+
+                }
+            }
+        }
+
+
         //탭 업데이트 
         public void UpdateInvokes()
         {
@@ -1069,70 +1064,6 @@ namespace ActuLight.Pages
             else
             {
                 return;
-            }
-        }
-
-        public void UpdateSheets2()
-        {
-            try
-            {
-                // UI 스레드에서 실행되도록 전체 메서드를 래핑
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    // 현재 선택된 탭의 이름 저장
-                    string selectedTabName = (SheetTabControl.SelectedItem as TabItem)?.Header?.ToString();
-
-                    // TabControl의 아이템을 한 번에 업데이트하기 위한 새로운 컬렉션
-                    var newItems = new ObservableCollection<TabItem>();
-
-                    // 현재 모델의 시트들을 처리
-                    if (Models.TryGetValue(selectedModel, out Model currentModel))
-                    {
-                        foreach (var sheetPair in currentModel.Sheets)
-                        {
-                            var tab = CreateOrUpdateTab(sheetPair.Key.Replace(";", ":"), sheetPair.Value);
-                            newItems.Add(tab);
-                        }
-                    }
-
-                    // 다른 모델의 시트들을 처리
-                    foreach (var modelPair in Models.Where(m => m.Key != selectedModel))
-                    {
-                        foreach (var sheetPair in modelPair.Value.Sheets)
-                        {
-                            var tab = CreateOrUpdateTab(sheetPair.Key, sheetPair.Value);
-                            newItems.Add(tab);
-                        }
-                    }
-
-                    // TabControl의 아이템을 한 번에 업데이트
-                    SheetTabControl.Items.Clear();
-                    foreach (var item in newItems)
-                    {
-                        SheetTabControl.Items.Add(item);
-                    }
-
-                    // 이전에 선택된 탭 복원
-                    var tabToSelect = SheetTabControl.Items.Cast<TabItem>()
-                        .FirstOrDefault(t => t.Header.ToString() == selectedTabName);
-
-                    if (tabToSelect != null)
-                    {
-                        tabToSelect.IsSelected = true;
-                    }
-                    else if (SheetTabControl.Items.Count > 0)
-                    {
-                        (SheetTabControl.Items[0] as TabItem).IsSelected = true;
-                    }
-
-                    HighlightHeaders();
-                    UpdateParameterGroups();
-                }, System.Windows.Threading.DispatcherPriority.Render);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"UpdateSheets error: {ex.Message}");
-                // 필요한 예외 처리
             }
         }
 
@@ -1270,13 +1201,6 @@ namespace ActuLight.Pages
             {
                 LoadTabData(newTab);
             }
-        }
-
-        private TabItem CreateOrUpdateTab(string header, Sheet sheet)
-        {
-            TabItem tab = new TabItem();
-            AddSheetTab(header, sheet, tab);
-            return tab;
         }
 
         private void AddSheetTab(string sheetName, Sheet sheet, TabItem tabItem)

@@ -43,6 +43,11 @@ namespace ActuLight
             ((MainWindow)Window.GetWindow(this)).NavigateTo("AssumptionPage");
         }
 
+        private void ExternalDataButton_Click(object sender, RoutedEventArgs e)
+        {
+            ((MainWindow)Window.GetWindow(this)).NavigateTo("ExternalDataPage");
+        }
+
         private void SpreadsheetButton_Click(object sender, RoutedEventArgs e)
         {
             ((MainWindow)Window.GetWindow(this)).NavigateTo("SpreadsheetPage");
@@ -58,13 +63,20 @@ namespace ActuLight
             ((MainWindow)Window.GetWindow(this)).NavigateTo("OutputPage");
         }
 
+        private void DataProcessButton_Click(object sender, RoutedEventArgs e)
+        {
+            ((MainWindow)Window.GetWindow(this)).NavigateTo("DataProcessingPage");
+        }
+
         public void SetButtonsEnabled(bool enabled)
         {
             FileButton.IsEnabled = enabled;
             ModelPointButton.IsEnabled = enabled;
             AssumptionButton.IsEnabled = enabled;
+            ExternalDataButton.IsEnabled = enabled;
             SpreadsheetButton.IsEnabled = enabled;
             OutputButton.IsEnabled = enabled;
+            DataProcessButton.IsEnabled = enabled;
             SettingsButton.IsEnabled = enabled;
         }
 

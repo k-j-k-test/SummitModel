@@ -1,0 +1,158 @@
+﻿<Page x:Class="ActuLight.Pages.DataProcessingPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="DataProcessingPage">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Controls -->
+        <Grid Grid.Row="0" Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="150"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="150"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Text="처리 방식:" VerticalAlignment="Center" Grid.Column="0" Margin="0,0,10,0"/>
+            <ComboBox x:Name="ProcessTypeComboBox" Grid.Column="1" SelectionChanged="ProcessTypeComboBox_SelectionChanged">
+                <ComboBoxItem Content="Split"/>
+                <ComboBoxItem Content="Filter"/>
+                <ComboBoxItem Content="Count"/>
+                <ComboBoxItem Content="Distinct"/>
+            </ComboBox>
+
+            <TextBlock Text="구분자:" Grid.Column="2" VerticalAlignment="Center" Margin="20,0,10,0"/>
+            <TextBox x:Name="DelimiterTextBox" 
+                 Grid.Column="3" 
+                 IsReadOnly="True"
+                 Width="150"/>
+
+            <TextBox x:Name="StatusTextBox" Grid.Column="4" IsReadOnly="True" Margin="20,0,10,0"/>
+
+            <Button x:Name="StartButton" Content="시작" Grid.Column="5" Width="80" Margin="0,0,10,0" Click="StartButton_Click"/>
+            <Button x:Name="CancelButton" Content="취소" Grid.Column="6" Width="80" Click="CancelButton_Click"/>
+        </Grid>
+
+        <!-- Text Variables Panel -->
+        <WrapPanel Grid.Row="1" Margin="10">
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FFE81123" Margin="0,0,5,0"/>
+                <Label Content="a1"/>
+                <TextBox x:Name="A1TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FFE8A623" Margin="0,0,5,0"/>
+                <Label Content="a2"/>
+                <TextBox x:Name="A2TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FF23E816" Margin="0,0,5,0"/>
+                <Label Content="a3"/>
+                <TextBox x:Name="A3TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FF16E8E8" Margin="0,0,5,0"/>
+                <Label Content="a4"/>
+                <TextBox x:Name="A4TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FF1623E8" Margin="0,0,5,0"/>
+                <Label Content="a5"/>
+                <TextBox x:Name="A5TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FFE816E8" Margin="0,0,5,0"/>
+                <Label Content="a6"/>
+                <TextBox x:Name="A6TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                <Rectangle Width="16" Height="16" Fill="#FF888888" Margin="0,0,5,0"/>
+                <Label Content="a7"/>
+                <TextBox x:Name="A7TextBox" Width="150"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Rectangle Width="16" Height="16" Fill="#FFAAAAAA" Margin="0,0,5,0"/>
+                <Label Content="a8"/>
+                <TextBox x:Name="A8TextBox" Width="150"/>
+            </StackPanel>
+        </WrapPanel>
+
+        <!-- Process Specific Controls -->
+        <Grid Grid.Row="2" x:Name="ProcessSpecificControls" Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+        </Grid>
+
+        <!-- Files Table -->
+        <DataGrid x:Name="FilesGrid" Grid.Row="3" Margin="10" 
+                  AutoGenerateColumns="False" 
+                  AllowDrop="True"
+                  CanUserSortColumns="False"
+                  Drop="FilesGrid_Drop"
+                  DragOver="FilesGrid_DragOver"
+                  SelectionChanged="FilesGrid_SelectionChanged">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No." 
+                          Binding="{Binding Number}" 
+                          Width="50"
+                          IsReadOnly="True"/>
+                <DataGridTextColumn Header="Path" 
+                          Binding="{Binding Path}" 
+                          Width="*"
+                          IsReadOnly="True"/>
+                <DataGridTextColumn Header="Key" 
+                          Binding="{Binding Key}" 
+                          Width="200"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Sample Lines -->
+        <RichTextBox x:Name="SampleLinesTextBox" 
+             Grid.Row="4" 
+             Margin="10"
+             Height="200"
+             IsReadOnly="True"
+             VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Auto"
+             FontFamily="Consolas">
+            <RichTextBox.Resources>
+                <Style TargetType="Run" x:Key="HighlightStyle1">
+                    <Setter Property="Background" Value="#FFE81123"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle2">
+                    <Setter Property="Background" Value="#FFE8A623"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle3">
+                    <Setter Property="Background" Value="#FF23E816"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle4">
+                    <Setter Property="Background" Value="#FF16E8E8"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle5">
+                    <Setter Property="Background" Value="#FF1623E8"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle6">
+                    <Setter Property="Background" Value="#FFE816E8"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle7">
+                    <Setter Property="Background" Value="#FF888888"/>
+                </Style>
+                <Style TargetType="Run" x:Key="HighlightStyle8">
+                    <Setter Property="Background" Value="#FFAAAAAA"/>
+                </Style>
+            </RichTextBox.Resources>
+        </RichTextBox>
+    </Grid>
+</Page>

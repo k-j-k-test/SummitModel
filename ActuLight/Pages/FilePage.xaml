@@ -50,15 +50,13 @@
             <!-- Additional space -->
             <StackPanel Grid.Row="3" />
 
+
         </Grid>
 
         <!-- Vertical Separator (fixed line) -->
         <Rectangle Grid.Column="1" Width="1" Fill="LightGray" VerticalAlignment="Stretch" />
 
-        <!-- Right Panel -->                
-        
-        
-        
+        <!-- Right Panel -->                        
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -72,7 +70,6 @@
             <!-- Excel Summary and Memory Usage -->
             <StackPanel Grid.Row="1" Margin="10">
                 <TextBlock Name="ExcelSummary" TextWrapping="Wrap"/>
-                
             </StackPanel>
 
             <!-- Version Info and Update Link -->

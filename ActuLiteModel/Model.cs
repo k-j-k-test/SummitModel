@@ -122,7 +122,7 @@ namespace ActuLiteModel
         {
             try
             {
-                TransformedFormula = ModelEngine.TransformText(Formula, Model.Name);
+                TransformedFormula = FormulaTransformationUtility.TransformText(Formula, Model.Name);
                 Expression = Model.Engine.Context.CompileGeneric<double>(TransformedFormula);
                 IsCompiled = true;
                 CompileStatusMessage = "Successfully Compiled";

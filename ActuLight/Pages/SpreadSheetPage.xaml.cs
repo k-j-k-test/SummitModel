@@ -22,7 +22,6 @@ using Windows.Graphics.Printing.Workflow;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 
-
 namespace ActuLight.Pages
 {
     public partial class SpreadSheetPage : Page
@@ -87,19 +86,14 @@ namespace ActuLight.Pages
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Renew;
         }
 
-        private async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
+        public async void LoadData_Click(object sender, RoutedEventArgs e) => await LoadDataAsync();
 
         public async Task LoadDataAsync()
         {
-            LoadingOverlay.Visibility = Visibility.Visible;
             try
             {
-                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
-                string modelsFolder = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Scripts");
-                if (!Directory.Exists(modelsFolder))
-                {
-                    Directory.CreateDirectory(modelsFolder);
-                }
+                LoadingOverlay.Visibility = Visibility.Visible;
+                string modelsFolder = Path.Combine(FilePage.SelectedFolderPath, "Scripts");
 
                 OpenFileDialog openFileDialog = new OpenFileDialog
                 {
@@ -111,36 +105,48 @@ namespace ActuLight.Pages
 
                 if (openFileDialog.ShowDialog() == true)
                 {
-                    string json = File.ReadAllText(openFileDialog.FileName);
-                    Scripts = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
+                    await LoadDataAsync(openFileDialog.FileName);
+                }
+            }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
 
+        public async Task LoadDataAsync(string filePath)
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                string json = await Task.Run(() => File.ReadAllText(filePath));
+
+                await Application.Current.Dispatcher.InvokeAsync(async () =>
+                {
+                    Scripts = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
                     Models.Clear();
+
                     foreach (var kvp in Scripts)
                     {
                         Models[kvp.Key] = new Model(kvp.Key, App.ModelEngine);
                     }
 
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        ModelsList.ItemsSource = Models.Keys.ToList();
-                        UpdateSyntaxHighlighter();
-                    });
+                    var modelKeys = Models.Keys.ToList();
+                    ModelsList.ItemsSource = modelKeys;
 
-                    // 컴파일 실행
                     ScriptEditor.Text = string.Empty;
                     ModelsList.SelectedIndex = -1;
                     selectedModel = null;
+
                     for (int i = Models.Count - 1; i >= 0; i--)
                     {
                         ModelsList.SelectedIndex = i;
                         ScriptEditor.Text = Scripts.Values.ToList()[i];
-                        await ProcessTextChangeInternal(Scripts[ModelsList.SelectedItem.ToString()]);
+                        await UpdateModelAndUIFromScript(Scripts[ModelsList.SelectedItem.ToString()]);
                     }
 
                     UpdateSyntaxHighlighter();
-
-                    MessageBox.Show("데이터를 성공적으로 불러왔습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
+                });
             }
             catch (Exception ex)
             {
@@ -168,23 +174,11 @@ namespace ActuLight.Pages
         private void ModelsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ModelsList.SelectedItem is string selectedItem)
-            {              
-                if (e.RemovedItems.Count == 0)
-                {
-                    selectedModel = selectedItem;
-                    return;
-                }
-
-                string selectedModel_old = e.RemovedItems[0].ToString();
-                string selectedModel_new = e.AddedItems[0].ToString();
-
-                if (selectedModel != null)
-                {
-                    Scripts[selectedModel_old] = ScriptEditor.Text;
-                }
-
-                ScriptEditor.Text = Scripts.TryGetValue(selectedModel_new, out string script) ? script : "";
-                selectedModel = selectedModel_new;
+            {
+                selectedModel = selectedItem;
+                ScriptEditor.Text = Scripts.TryGetValue(selectedModel, out string script) ? script : "";
+                UpdateCellList(selectedModel);
+                UpdateSyntaxHighlighter();
             }
         }
 
@@ -208,15 +202,13 @@ namespace ActuLight.Pages
             {
                 await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 300, async () =>
                 {
-                    await ProcessTextChangeInternal(ScriptEditor.Text);
+                    await UpdateModelAndUIFromScript(ScriptEditor.Text);
                 });
             }
         }
 
-        private async Task ProcessTextChangeInternal(string text)
+        private async Task UpdateModelAndUIFromScript(string text)
         {
-            // 여기에 기존의 ProcessTextChangeInternal 내용을 유지합니다.
-            // UI 관련 작업은 Dispatcher.Invoke를 사용합니다.
             try
             {
                 if (selectedModel == null || !Models.ContainsKey(selectedModel))
@@ -224,79 +216,95 @@ namespace ActuLight.Pages
                     return;
                 }
 
-                Model model = Models[selectedModel];
+                // 데이터 처리 및 컴파일 수행
+                var (cellChanges, invokeChanges) = UpdateModel(text);
 
-                //Folding Update
-                FoldingStrategy.UpdateFoldings(FoldingManager, ScriptEditor.Document);
-
-                // Update cellMatches
-                var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
-                var newCellMatches = cellPattern.Matches(text);
-
-                // Check for cell changes
-                bool hasCellChanges = cellMatches == null ||
-                                      cellMatches.Count != newCellMatches.Count ||
-                                      !Enumerable.Range(0, cellMatches.Count)
-                                                 .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                           cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
-
-                bool hasCompiledCellChanges = false;
-
-                if (hasCellChanges)
+                // UI 업데이트가 필요한 경우에만 수행
+                if (cellChanges || invokeChanges)
                 {
-                    UpdateModelCells(newCellMatches);
-
-                    // 컴파일된 셀 이름 목록 생성
-                    var compiledCellNames = model.CompiledCells.Values
-                        .Where(cell => cell.IsCompiled)
-                        .Select(cell => cell.Name)
-                        .ToHashSet();
-
-                    // Check for compiled cell changes
-                    hasCompiledCellChanges = cellMatches == null ||
-                                             cellMatches.Count != newCellMatches.Count ||
-                                             !Enumerable.Range(0, cellMatches.Count)
-                                                        .Where(i => compiledCellNames.Contains(cellMatches[i].Groups["cellName"].Value))
-                                                        .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
-                                                                  cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
-
-                    cellMatches = newCellMatches;
-                    cellMatchesDict[selectedModel] = cellMatches;
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        UpdateCellList(selectedModel);
-                        UpdateSyntaxHighlighter();
-                    });
-
-                }
-
-                // Update invokeList
-                var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
-                var newInvokeMatches = invokePattern.Matches(text);
-
-                var newInvokeList = newInvokeMatches
-                    .Cast<Match>()
-                    .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
-                    .ToList();
-
-                // Check for Invoke changes
-                bool hasInvokeChanges = invokeList == null ||
-                                        invokeList.Count != newInvokeList.Count ||
-                                        !invokeList.SequenceEqual(newInvokeList);
-
-                if (hasInvokeChanges || hasCompiledCellChanges)
-                {
-                    invokeList = newInvokeList;
-                    UpdateInvokes();
+                    await UpdateUIAsync();
                 }
 
                 scriptChanged = true;
             }
-            catch(Exception ex) 
+            catch (Exception ex)
             {
                 throw new Exception(ex.Message);
             }
+        }
+
+        private (bool HasCellChanges, bool HasInvokeChanges) UpdateModel(string text)
+        {
+            // Scripts 딕셔너리 업데이트
+            Scripts[selectedModel] = text;
+
+            Model model = Models[selectedModel];
+
+            // Update cellMatches
+            var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
+            var newCellMatches = cellPattern.Matches(text);
+
+            // Check for cell changes
+            bool hasCellChanges = cellMatches == null ||
+                                  cellMatches.Count != newCellMatches.Count ||
+                                  !Enumerable.Range(0, cellMatches.Count)
+                                             .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                       cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+            bool hasCompiledCellChanges = false;
+
+            if (hasCellChanges)
+            {
+                UpdateModelCells(newCellMatches);
+
+                // 컴파일된 셀 이름 목록 생성
+                var compiledCellNames = model.CompiledCells.Values
+                    .Where(cell => cell.IsCompiled)
+                    .Select(cell => cell.Name)
+                    .ToHashSet();
+
+                // Check for compiled cell changes
+                hasCompiledCellChanges = cellMatches == null ||
+                                         cellMatches.Count != newCellMatches.Count ||
+                                         !Enumerable.Range(0, cellMatches.Count)
+                                                    .Where(i => compiledCellNames.Contains(cellMatches[i].Groups["cellName"].Value))
+                                                    .All(i => cellMatches[i].Groups["cellName"].Value == newCellMatches[i].Groups["cellName"].Value &&
+                                                              cellMatches[i].Groups["formula"].Value == newCellMatches[i].Groups["formula"].Value);
+
+                cellMatches = newCellMatches;
+                cellMatchesDict[selectedModel] = cellMatches;
+            }
+
+            // Update invokeList
+            var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
+            var newInvokeMatches = invokePattern.Matches(text);
+
+            var newInvokeList = newInvokeMatches
+                .Cast<Match>()
+                .Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value)))
+                .ToList();
+
+            // Check for Invoke changes
+            bool hasInvokeChanges = invokeList == null ||
+                                    invokeList.Count != newInvokeList.Count ||
+                                    !invokeList.SequenceEqual(newInvokeList);
+
+            if (hasInvokeChanges || hasCompiledCellChanges)
+            {
+                invokeList = newInvokeList;
+                UpdateInvokes();
+            }
+
+            return (hasCellChanges, hasInvokeChanges || hasCompiledCellChanges);
+        }
+
+        private async Task UpdateUIAsync()
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                UpdateCellList(selectedModel);
+                UpdateSyntaxHighlighter();
+            });
         }
 
         private void AddModel_Click(object sender, RoutedEventArgs e)
@@ -310,10 +318,12 @@ namespace ActuLight.Pages
 
                 var modelsList = (List<string>)ModelsList.ItemsSource ?? new List<string>();
                 modelsList.Add(newModelName);
+
                 ModelsList.ItemsSource = null;
                 ModelsList.ItemsSource = modelsList;
-
                 ModelsList.SelectedItem = newModelName;
+                selectedModel = newModelName;
+
                 ScriptEditor.Text = "";
                 UpdateCellList(newModelName);
             }
@@ -422,16 +432,15 @@ namespace ActuLight.Pages
                 ViewInExcelButton.IsEnabled = false;
                 ViewInExcelButton.Content = "엑셀로 추줄중..";
 
-                string excelFilePath = FilePage.SelectedFilePath;
-                if (string.IsNullOrEmpty(excelFilePath))
+                string folderPath = FilePage.SelectedFolderPath;
+                if (string.IsNullOrEmpty(folderPath))
                 {
                     MessageBox.Show("먼저 FilePage에서 파일을 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                string directory = Path.GetDirectoryName(excelFilePath);
-                string fileName = Path.GetFileNameWithoutExtension(excelFilePath);
-                string samplesDirectory = Path.Combine(directory, @$"Data_{fileName}\Samples");
+                string fileName = Path.GetFileNameWithoutExtension(folderPath);
+                string samplesDirectory = Path.Combine(folderPath, "Samples");
 
                 if (!Directory.Exists(samplesDirectory))
                 {
@@ -441,8 +450,8 @@ namespace ActuLight.Pages
                 string filePath = Path.Combine(samplesDirectory, $"Sample_{fileName}.xlsx");
 
                 // Models가 이미 정렬되어 있으므로, 그대로 SaveSampleToExcel 메서드에 전달
-                await Task.Run(() => App.ModelEngine.SaveSampleToExcel(filePath));
-                ModelEngine.RunLatestExcelFile(filePath);
+                await Task.Run(() => SampleExporter.SaveSampleToExcel(filePath));
+                SampleExporter.RunLatestExcelFile(filePath);
             }
             catch (Exception ex)
             {
@@ -482,31 +491,30 @@ namespace ActuLight.Pages
 
         private void DeleteModel(string modelName)
         {
-            var result = MessageBox.Show($"정말로 '{modelName}' 모델을 삭제하시겠습니까?", "모델 삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            var result = MessageBox.Show($"정말로 '{modelName}' 모델을 삭제하시겠습니까?",
+                "모델 삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
             if (result == MessageBoxResult.Yes)
             {
                 var modelsList = ModelsList.ItemsSource as List<string>;
                 int currentIndex = modelsList.IndexOf(modelName);
-                modelsList.Remove(modelName);
 
                 Models.Remove(modelName);
                 Scripts.Remove(modelName);
+                modelsList.Remove(modelName);
+
+                // UI 업데이트
+                ModelsList.ItemsSource = null;
+                ModelsList.ItemsSource = modelsList;
 
                 if (modelsList.Count > 0)
                 {
-                    int newIndex = Math.Min(currentIndex, modelsList.Count - 1);
-                    selectedModel = modelsList[newIndex];
-                    ModelsList.ItemsSource = null;
-                    ModelsList.ItemsSource = modelsList;
-                    ModelsList.SelectedIndex = newIndex;
-
-                    ScriptEditor.Text = Scripts[selectedModel];
-                    UpdateCellList(selectedModel);
+                    ModelsList.SelectedIndex = Math.Min(currentIndex, modelsList.Count - 1);
+                    selectedModel = modelsList[ModelsList.SelectedIndex];
                 }
                 else
                 {
                     selectedModel = null;
-                    ModelsList.ItemsSource = null;
                     ScriptEditor.Text = "";
                     CellsList.ItemsSource = null;
                 }
@@ -524,30 +532,28 @@ namespace ActuLight.Pages
 
                 if (!string.IsNullOrWhiteSpace(newModelName) && !Models.ContainsKey(newModelName))
                 {
-                    // Models 딕셔너리 업데이트
                     Models[newModelName] = Models[oldModelName];
                     Models[newModelName].Name = newModelName;
                     Models.Remove(oldModelName);
 
-                    // Scripts 딕셔너리 업데이트
                     Scripts[newModelName] = Scripts[oldModelName];
                     Scripts.Remove(oldModelName);
 
-                    // ModelsList 업데이트
                     var modelsList = ModelsList.ItemsSource as List<string>;
                     int index = modelsList.IndexOf(oldModelName);
                     modelsList[index] = newModelName;
+
                     ModelsList.ItemsSource = null;
                     ModelsList.ItemsSource = modelsList;
-
-                    // 선택된 아이템 업데이트
-                    ModelsList.SelectedItem = newModelName;
+                    ModelsList.SelectedIndex = index;
+                    selectedModel = newModelName;
 
                     UpdateSyntaxHighlighter();
                 }
                 else
                 {
-                    MessageBox.Show("유효하지 않은 모델 이름이거나 이미 존재하는 모델 이름입니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("유효하지 않은 모델 이름이거나 이미 존재하는 모델 이름입니다.",
+                        "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -803,10 +809,10 @@ namespace ActuLight.Pages
         {
             try
             {
-                Scripts[ModelsList.SelectedItem.ToString()] = ScriptEditor.Text;
+                if (ModelsList.Items.Count == 0) return;
 
-                string excelFilePath = FilePage.SelectedFilePath;
-                if (string.IsNullOrEmpty(excelFilePath))
+                string folderPath = FilePage.SelectedFolderPath;
+                if (string.IsNullOrEmpty(folderPath))
                 {
                     if (!IsAuto)
                     {
@@ -815,8 +821,7 @@ namespace ActuLight.Pages
                     return;
                 }
 
-                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
-                string modelsFolder = Path.Combine(Path.GetDirectoryName(excelFilePath), @$"Data_{excelName}\Scripts");
+                string modelsFolder = Path.Combine(folderPath, "Scripts");
                 if (!Directory.Exists(modelsFolder))
                 {
                     Directory.CreateDirectory(modelsFolder);
@@ -828,13 +833,13 @@ namespace ActuLight.Pages
                 if (IsAuto)
                 {
                     // 자동 저장 모드
-                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(excelFilePath)}_scripts_auto{AutoNum}.json");
+                    fileName = Path.Combine(modelsFolder, $"{Path.GetFileNameWithoutExtension(folderPath)}_scripts_auto{AutoNum}.json");
                     File.WriteAllText(fileName, json);
                 }
                 else
                 {
                     // 수동 저장 모드
-                    string baseFileName = Path.GetFileNameWithoutExtension(excelFilePath) + "_scripts";
+                    string baseFileName = Path.GetFileNameWithoutExtension(folderPath) + "_scripts";
                     int nextVersion = GetNextVersion(modelsFolder, baseFileName);
                     string defaultFileName = $"{baseFileName}_v{nextVersion}.json";
 

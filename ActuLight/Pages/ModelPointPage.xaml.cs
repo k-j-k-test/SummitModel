@@ -16,9 +16,10 @@ namespace ActuLight.Pages
     public partial class ModelPointPage : Page
     {
         private DataExpander dataExpander;
-        private List<List<object>> originalData;
         private List<string> headers;
         private List<string> types;
+        private Dictionary<string, DataGrid> tableGrids;
+        private Dictionary<string, List<List<object>>> tableNameData;
         public List<object> SelectedData { get; private set; }
         private Window expandedDataWindow;
         private bool isSearching = false;
@@ -26,6 +27,8 @@ namespace ActuLight.Pages
         public ModelPointPage()
         {
             InitializeComponent();
+            tableGrids = new Dictionary<string, DataGrid>();
+            tableNameData = new Dictionary<string, List<List<object>>>();
         }
 
         private async void LoadData_Click(object sender, RoutedEventArgs e)
@@ -47,30 +50,29 @@ namespace ActuLight.Pages
                     var mpData = filePage.excelData["mp"];
                     types = mpData[0].Select(t => t.ToString()).ToList();
                     headers = mpData[1].Select(h => h.ToString()).ToList();
-                    originalData = mpData.Skip(2).Where(x => x[0] != null).ToList();
+                    var allData = mpData.Skip(2).Where(x => x[0] != null).ToList();
 
                     dataExpander = new DataExpander(types, headers);
 
                     // ModelEngine의 ModelPoints 설정
-                    App.ModelEngine.SetModelPoints(originalData, types, headers);
+                    App.ModelEngine.SetModelPoints(allData, types, headers);
 
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        UpdateDataGrid(MainDataGrid, headers, originalData);
-                        AutoFitColumns();
-                    });
+                    // 각 테이블 타입에 대한 탭 생성
+                    await ClassifyAndCreateTabs();
 
-                    // 첫 번째 데이터의 확장된 데이터 가져오기
-                    if (originalData.Any())
+                    // 첫 번째 테이블의 첫 번째 데이터로 SelectedPoint 설정
+                    var firstTablePoints = App.ModelEngine.ModelPoints.FirstOrDefault();
+                    if (firstTablePoints.Value != null && firstTablePoints.Value.Any())
                     {
-                        var firstExpandedData = dataExpander.ExpandData(originalData[0]).FirstOrDefault();
+                        var firstPoint = firstTablePoints.Value[0];
+                        var firstExpandedData = dataExpander.ExpandData(firstPoint).FirstOrDefault();
                         if (firstExpandedData != null)
                         {
                             SelectedData = firstExpandedData;
                             UpdateSelectedDataDisplay();
 
                             // ModelEngine의 SetModelPoint 실행
-                            App.ModelEngine.SelectedPoint = SelectedData;
+                            App.ModelEngine.SelectedPoint = firstExpandedData;
                             App.ModelEngine.SetModelPoint();
                         }
                     }
@@ -112,6 +114,7 @@ namespace ActuLight.Pages
                 }
 
                 dataGrid.ItemsSource = data;
+                AutoFitColumns(dataGrid);
             }
             catch (Exception ex)
             {
@@ -119,13 +122,71 @@ namespace ActuLight.Pages
             }
         }
 
-        private void AutoFitColumns()
+        private async Task ClassifyAndCreateTabs()
         {
-            foreach (var column in MainDataGrid.Columns)
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                TableTabControl.Items.Clear();
+                tableGrids.Clear();
+                tableNameData.Clear();
+
+                // 테이블 타입별로 데이터 그룹화 및 저장
+                var groupedData = App.ModelEngine.ModelPoints
+                    .GroupBy(entry => entry.Key.Split('|')[0])
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.SelectMany(entry => entry.Value).ToList()
+                    );
+
+                // 그룹화된 데이터로 탭 생성 및 딕셔너리에 저장
+                foreach (var group in groupedData)
+                {
+                    var tableName = group.Key;
+                    var combinedData = group.Value;
+
+                    // 딕셔너리에 데이터 저장
+                    tableNameData[tableName] = combinedData;
+
+                    // DataGrid 생성 및 설정
+                    var dataGrid = CreateDataGrid();
+                    tableGrids[tableName] = dataGrid;
+
+                    var tabItem = new TabItem
+                    {
+                        Header = tableName,
+                        Content = dataGrid
+                    };
+                    TableTabControl.Items.Add(tabItem);
+
+                    UpdateDataGrid(dataGrid, headers, combinedData);
+                }
+
+                if (TableTabControl.Items.Count > 0)
+                {
+                    TableTabControl.SelectedIndex = 0;
+                }
+            });
+        }
+
+        private DataGrid CreateDataGrid()
+        {
+            var dataGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true,
+                CanUserSortColumns = false
+            };
+            dataGrid.MouseDoubleClick += MainDataGrid_MouseDoubleClick;
+            return dataGrid;
+        }
+
+        private void AutoFitColumns(DataGrid dataGrid)
+        {
+            foreach (var column in dataGrid.Columns)
             {
                 column.Width = new DataGridLength(1, DataGridLengthUnitType.Auto);
             }
-            MainDataGrid.UpdateLayout();
+            dataGrid.UpdateLayout();
         }
 
         private void ShowErrorMessage(string message)
@@ -137,10 +198,17 @@ namespace ActuLight.Pages
         {
             try
             {
-                if (MainDataGrid.SelectedItem is List<object> selectedRow)
+                if (sender is DataGrid dataGrid && dataGrid.SelectedItem is List<object> selectedRow)
                 {
-                    var expandedData = dataExpander.ExpandData(selectedRow).ToList();
-                    ShowExpandedDataWindow(expandedData);
+                    if (TableTabControl.SelectedItem is TabItem selectedTab)
+                    {
+                        var tableType = selectedTab.Header.ToString();
+                        if (tableNameData.ContainsKey(tableType))
+                        {
+                            var expandedData = dataExpander.ExpandData(selectedRow).ToList();
+                            ShowExpandedDataWindow(expandedData);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -239,22 +307,30 @@ namespace ActuLight.Pages
 
         private void ApplyFilter(string filterText)
         {
-            if (MainDataGrid.ItemsSource == null) return;
+            if (TableTabControl.SelectedItem is not TabItem selectedTab) return;
+
+            var tableType = selectedTab.Header.ToString();
+            var dataGrid = tableGrids[tableType];
+
+            // 저장된 데이터 사용
+            if (!tableNameData.TryGetValue(tableType, out var currentTableData))
+                return;
 
             if (string.IsNullOrWhiteSpace(filterText))
             {
-                MainDataGrid.ItemsSource = originalData;
+                dataGrid.ItemsSource = currentTableData;
             }
             else
             {
-                var filteredData = originalData.Where(row =>
+                var filteredData = currentTableData.Where(row =>
                     row.Any(cell =>
                         cell != null &&
                         cell.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
                     )
                 ).ToList();
-                MainDataGrid.ItemsSource = filteredData;
+                dataGrid.ItemsSource = filteredData;
             }
         }
     }
+
 }

@@ -1,7 +1,9 @@
 ﻿using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -9,9 +11,13 @@ namespace ActuLiteModel
 {
     public static class FleeFunc
     {
+        public static ModelEngine Engine { get; set; }
+        
         public static Dictionary<string, Model> ModelDict = new Dictionary<string, Model>();
 
         public static Dictionary<string, Model> SubModelDict = new Dictionary<string, Model>();
+
+        public static Dictionary<string, LTFReader> Readers { get; set; } = new Dictionary<string, LTFReader>();
 
         public static double epsilon(double t) => t < 0 ? -0.0000001 : 0.0000001;
 
@@ -110,6 +116,30 @@ namespace ActuLiteModel
             }
         }
 
+        public static double Exp(string productCode, string riderCode, string expenseType)
+        {
+            try
+            {
+                return Engine.GetExpense(productCode, riderCode, expenseType);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error in Exp calculation {productCode}|{riderCode}");
+            }
+        }
+
+        public static double Exp(string expenseType)
+        {
+            try
+            {
+                return Engine.GetExpense(expenseType);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error in Exp calculation {expenseType}");
+            }
+        }
+
         public static double Sum(string modelName, string cellName, double start, double end)
         {
             int _start = (int)(start + epsilon(start));
@@ -152,6 +182,48 @@ namespace ActuLiteModel
             }
 
             return PrdVal;
+        }
+
+        public static double ExData(string fileName, string key, int position)
+        {
+            if(Readers.ContainsKey(fileName))
+            {
+                string value = Readers[fileName].GetValue(key, position);
+
+                if(double.TryParse(value, out var val))
+                {
+                    return val;
+                }
+                else
+                {
+                    return double.NaN;
+                }
+            }
+            else
+            {
+                return double.NaN;
+            }
+        }
+
+        public static double ExData(string fileName, string key, int start, int length)
+        {
+            if (Readers.ContainsKey(fileName))
+            {
+                string value = Readers[fileName].GetValue(key, start, length);
+
+                if (double.TryParse(value, out var val))
+                {
+                    return val;
+                }
+                else
+                {
+                    return double.NaN;
+                }
+            }
+            else
+            {
+                return double.NaN;
+            }
         }
 
         public static Vector Vector(string modelName, string cellName, double start, double end)
@@ -214,45 +286,32 @@ namespace ActuLiteModel
             return Math.Round(number * SA) / SA;
         }
 
-        public static double Value(object var)
+        public static int Choose(int index, params int[] items)
         {
-            if (var.GetType() == typeof(DateTime))
-            {
-                return DateToDouble((DateTime)var);
-            }
-            else if (var.GetType() == typeof(string))
-            {
-                return StringToDouble((string)var);
-            }
-            else
-            {
-                return (double)var;
-            }
+            int idx = Math.Max(Math.Min(index, items.Length), 1);
+            return items[idx - 1];
         }
 
-        public static DateTime Date(double value)
+        public static double Choose(int index, params double[] items)
         {
-            return DoubleToDate(value);
+            int idx = Math.Max(Math.Min(index, items.Length), 1);
+            return items[idx - 1];
+        }
+
+        public static string Choose(int index, params string[] items)
+        {
+            int idx = Math.Max(Math.Min(index, items.Length), 1);
+            return items[idx - 1];
+        }
+
+        public static double Value(object var)
+        {
+            return Convert.ToDouble(var);
         }
 
         public static string Str(double value)
         {
-            return DoubleToString(value);
-        }
-
-        public static double AddYears(double value, int years)
-        {
-            return Value(Date(value).AddYears(years));
-        }
-
-        public static double AddMonths(double value, int months)
-        {
-            return Value(Date(value).AddMonths(months));
-        }
-
-        public static double AddDays(double value, int days)
-        {
-            return Value(Date(value).AddDays(days));
+            return value.ToString();
         }
 
         private static string GetParameterString(Model model)
@@ -284,41 +343,6 @@ namespace ActuLiteModel
 
             sb.Append('}');
             return sb.ToString();
-        }
-
-        private static double StringToDouble(string str)
-        {
-            byte[] bytes = Encoding.Default.GetBytes(str);
-
-            if (bytes.Length < 8)
-            {
-                byte[] paddedBytes = new byte[8];
-                Array.Copy(bytes, paddedBytes, bytes.Length);
-                bytes = paddedBytes;
-            }
-
-            return BitConverter.ToDouble(bytes, 0);
-        }
-
-        private static string DoubleToString(double number)
-        {
-            byte[] bytes = BitConverter.GetBytes(number);
-            return Encoding.Default.GetString(bytes).TrimEnd('\0');
-        }
-
-        private static double DateToDouble(DateTime date)
-        {
-            // 기준일 (예: 1900년 1월 1일)로부터의 경과 일수를 계산하여 반환
-            DateTime baseDate = new DateTime(1900, 1, 1);
-            TimeSpan span = date - baseDate;
-            return span.TotalDays;
-        }
-
-        private static DateTime DoubleToDate(double doubleRepresentation)
-        {
-            // 기준일 (예: 1900년 1월 1일)로부터의 경과 일수를 날짜로 변환
-            DateTime baseDate = new DateTime(1900, 1, 1);
-            return baseDate.AddDays(doubleRepresentation);
         }
     }
 

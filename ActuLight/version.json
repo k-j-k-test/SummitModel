@@ -1,10 +1,10 @@
 ﻿{
-  "Version": "v0.0.16",
+  "Version": "v0.0.18",
   "UpdateFiles": [
     "ActuLight.exe",
     "ActuLiteModel.dll",
     "version.json",
     "AutoCompletion.json",
-    "risk_rates_postguide.xlsx"
+    "Resources\risk_rates_postguide.xlsx"
   ]
 }

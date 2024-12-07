@@ -7,11 +7,16 @@
     <Application.Resources>
         <ResourceDictionary>
 
+            <!-- 기본 스타일 정의 -->
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemeResources />
                 <ui:XamlControlsResources />
-                <!-- 여기에 다른 리소스 사전들을 추가 -->
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- TextBox 기본 스타일 재정의 -->
+            <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+                <Setter Property="ui:TextBoxHelper.IsEnabled" Value="False" />
+            </Style>
 
             <local:MenuBar x:Key="GlobalMenuBar" />
             <local:NavigationBar x:Key="GlobalNavigationBar" />

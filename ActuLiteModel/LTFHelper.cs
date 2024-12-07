@@ -6,26 +6,33 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Reflection;
 using System.Globalization;
+using System.Web;
 
 namespace ActuLiteModel
 {
     public class LTFReader
     {
-        public string FilePath { get; }
-        public string IndexPath { get; private set; }
-        public Encoding Encoding { get; }
+        public string FilePath { get; set; }
+        public string IndexPath { get; set; }
+        public Encoding Encoding { get; set; }
         public string Delimiter { get; set; }
         public int[] FieldLengths { get; set; }
-        public string LineEnding { get; private set; }
-        public double Progress { get; private set; }
+        public string LineEnding { get; set; }
+        public double Progress { get; set; }
         public bool IsCanceled { get; set; }
         public int BufferSize { get; set; } = 50000;
         public int SkipLines { get; set; }
 
-        private Dictionary<string, List<long>> Index { get; } = new Dictionary<string, List<long>>();
-        public Func<string, string> KeySelector { get; }
-        private DateTime FileLastWriteTime { get; set; }
-        private string KeySelectorHash { get; set; }
+        public Dictionary<string, List<long>> Index { get; } = new Dictionary<string, List<long>>();
+        public Func<string, string> KeySelector { get; set; }
+        public DateTime FileLastWriteTime { get; set; }
+        public string KeySelectorHash { get; set; }
+        public string KeySelectorExpression { get; set; }
+
+        public LTFReader()
+        {
+
+        }
 
         public LTFReader(string filePath)
         {
@@ -39,7 +46,7 @@ namespace ActuLiteModel
             : this(filePath)
         {
             KeySelector = keySelector;
-            IndexPath = CreateIndexPath();
+            IndexPath = GetIndexPath();
             FileLastWriteTime = File.GetLastWriteTime(FilePath);
             KeySelectorHash = GetKeySelectorHash(keySelector);
         }
@@ -96,6 +103,8 @@ namespace ActuLiteModel
 
                     previousKey = currentKey;
                     Progress = (double)position / fileSize;
+
+                    if (IsCanceled) break;
                 }
             }
         }
@@ -104,8 +113,8 @@ namespace ActuLiteModel
         {
             using (StreamWriter writer = new StreamWriter(IndexPath, false, Encoding))
             {
-                // 메타데이터를 첫 줄에 저장
-                var metadata = $"#META|{FileLastWriteTime.Ticks}|{KeySelectorHash}";
+                // 메타데이터를 첫 줄에 저장 (파일시간|KeySelectorHash|KeySelector표현식)
+                var metadata = $"#META|{FileLastWriteTime.Ticks}|{KeySelectorHash}|{KeySelectorExpression}";
                 writer.WriteLine(metadata);
 
                 // 기존 인덱스 데이터 저장
@@ -176,6 +185,56 @@ namespace ActuLiteModel
             return true;
         }
 
+        public bool LoadIndexWithoutKeySelector()
+        {
+            if (!File.Exists(IndexPath))
+                return false;
+
+            try
+            {
+                using (StreamReader reader = new StreamReader(IndexPath, Encoding))
+                {
+                    string metaLine = reader.ReadLine();
+                    if (metaLine?.StartsWith("#META|") == true)
+                    {
+                        var parts = metaLine.Split('|');
+                        if (parts.Length >= 4)  // 메타데이터가 모두 있는지 확인
+                        {
+                            var savedFileTime = new DateTime(long.Parse(parts[1]));
+                            if (savedFileTime != FileLastWriteTime)
+                                return false;
+
+                            // KeySelector 표현식 저장
+                            KeySelectorExpression = parts[3];
+                        }
+                    }
+
+                    // 인덱스 데이터 로드
+                    Index.Clear();
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        string[] parts = line.Split('|');
+                        if (parts.Length == 2)
+                        {
+                            string key = parts[0];
+                            List<long> positions = parts[1]
+                                .Split(',')
+                                .Select(x => long.Parse(x))
+                                .ToList();
+                            Index[key] = positions;
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch
+            {
+                Index.Clear();
+                return false;
+            }
+        }
+
         public List<string> GetLines(string key)
         {
             List<string> results = new List<string>();
@@ -195,6 +254,35 @@ namespace ActuLiteModel
 
                     string line = reader.ReadLine();
                     while (line != null && KeySelector(line) == key)
+                    {
+                        results.Add(line);
+                        line = reader.ReadLine();
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        public List<string> GetLines(string key, int maxLines)
+        {
+            List<string> results = new List<string>();
+
+            if (!Index.ContainsKey(key))
+                return results;
+
+            using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (StreamReader reader = new StreamReader(fs, Encoding))
+            {
+                foreach (long position in Index[key])
+                {
+                    if (IsCanceled || results.Count >= maxLines) break;
+
+                    fs.Position = position;
+                    reader.DiscardBufferedData();
+
+                    string line = reader.ReadLine();
+                    while (line != null && KeySelector(line) == key && results.Count < maxLines)
                     {
                         results.Add(line);
                         line = reader.ReadLine();
@@ -238,6 +326,29 @@ namespace ActuLiteModel
             }
         }
 
+        public string GetValue(string key, int index)
+        {
+            string line = GetLine(key);
+            if (line == null || string.IsNullOrEmpty(Delimiter))
+                return null;
+
+            var parts = line.Split(new[] { Delimiter }, StringSplitOptions.None);
+            if (index < 0 || index >= parts.Length)
+                return string.Empty;
+
+            return parts[index].Trim();
+        }
+
+        public string GetValue(string key, int position, int length)
+        {
+            string line = GetLine(key);
+            if (line == null || position < 0 || position >= line.Length)
+                return null;
+
+            int actualLength = Math.Min(length, line.Length - position);
+            return line.Substring(position, actualLength).Trim();
+        }
+
         public List<string> GetUniqueKeys()
         {
             return new List<string>(Index.Keys);
@@ -274,7 +385,7 @@ namespace ActuLiteModel
             }
         }
 
-        private string GetKeySelectorHash(Func<string, string> keySelector)
+        public string GetKeySelectorHash(Func<string, string> keySelector)
         {
             var random = new Random(42);  // 고정된 시드값
 
@@ -336,7 +447,7 @@ namespace ActuLiteModel
             }
         }
 
-        private bool ValidateMetadata(string metaLine)
+        public bool ValidateMetadata(string metaLine)
         {
             if (string.IsNullOrEmpty(metaLine) || !metaLine.StartsWith("#META|"))
                 return false;
@@ -358,7 +469,7 @@ namespace ActuLiteModel
             return true;
         }
 
-        private void DetectDelimiter()
+        public void DetectDelimiter()
         {
             var commonDelimiters = new[] { "\t", ",", "|", ";", "^" };
             var delimiterCounts = new Dictionary<string, int>();
@@ -396,7 +507,7 @@ namespace ActuLiteModel
             }
         }
 
-        private void DetectLineEnding()
+        public void DetectLineEnding()
         {
             using (StreamReader reader = new StreamReader(FilePath, Encoding))
             {
@@ -417,7 +528,7 @@ namespace ActuLiteModel
             }
         }
 
-        private string CreateIndexPath()
+        public string GetIndexPath()
         {
             string fileName = Path.GetFileNameWithoutExtension(FilePath);
             string directoryPath = Path.GetDirectoryName(FilePath);
@@ -535,7 +646,7 @@ namespace ActuLiteModel
             return processDir;
         }
 
-        private static string GetBaseDirectory(string filePath)
+        public static string GetBaseDirectory(string filePath)
         {
             string directoryPath = Path.GetDirectoryName(filePath);
             string fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -569,7 +680,6 @@ namespace ActuLiteModel
             }
 
             var outputFiles = new Dictionary<string, StreamWriter>();
-
             try
             {
                 reader.ProcessFile(lines =>
@@ -578,14 +688,17 @@ namespace ActuLiteModel
                     foreach (var group in groupedLines)
                     {
                         string category = group.Key;
-                        if (!outputFiles.ContainsKey(category))
+                        string safeCategory = IsValidFileName(category) ? category : "error";
+
+                        if (!outputFiles.ContainsKey(safeCategory))
                         {
-                            string outputPath = Path.Combine(processDir.FullName, $"{category}{extension}");
-                            outputFiles[category] = new StreamWriter(outputPath, true, reader.Encoding);
+                            string outputPath = Path.Combine(processDir.FullName, $"{safeCategory}{extension}");
+                            outputFiles[safeCategory] = new StreamWriter(outputPath, true, reader.Encoding);
                         }
+
                         foreach (var line in group)
                         {
-                            outputFiles[category].WriteLine(line);
+                            outputFiles[safeCategory].WriteLine(line);
                         }
                     }
                 });
@@ -719,6 +832,30 @@ namespace ActuLiteModel
                 }
             }
         }
+
+        private static bool IsValidFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return false;
+
+            // 시스템에서 사용할 수 없는 문자 검사
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            if (fileName.IndexOfAny(invalidChars) >= 0) return false;
+
+            // Windows의 예약된 파일명 검사
+            var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "CON", "PRN", "AUX", "NUL",
+                "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+            };
+
+            if (reservedNames.Contains(fileName)) return false;
+
+            // 파일명 길이 제한 검사 (Windows 기준 255자)
+            if (fileName.Length > 255) return false;
+
+            return true;
+        }
     }
 
     public static class StringToObjectConverter
@@ -827,18 +964,24 @@ namespace ActuLiteModel
             _delimiter = DetectDelimiter(_line);
         }
 
+        public static void SetLine(string line, string delimiter)
+        {
+            _line = line ?? string.Empty;
+            _delimiter = delimiter;
+        }
+
         private static string DetectDelimiter(string line)
         {
             if (string.IsNullOrEmpty(line))
                 return string.Empty;
 
             var delimiters = new Dictionary<string, int>
-        {
-            {"\t", line.Count(c => c == '\t')},
-            {"|", line.Count(c => c == '|')},
-            {";", line.Count(c => c == ';')},
-            {",", line.Count(c => c == ',')}
-        };
+            {
+                {"\t", line.Count(c => c == '\t')},
+                {"|", line.Count(c => c == '|')},
+                {";", line.Count(c => c == ';')},
+                {",", line.Count(c => c == ',')}
+            };
 
             return delimiters.OrderByDescending(x => x.Value).First().Key;
         }
@@ -855,41 +998,14 @@ namespace ActuLiteModel
                     return string.Empty;
 
                 var parts = _line.Split(new[] { _delimiter }, StringSplitOptions.None);
-                if (index <= 0 || index > parts.Length)
+                if (index < 0 || index > parts.Length)
                     return string.Empty;
 
-                return parts[index - 1].Trim();
+                return parts[index].Trim();
             }
             catch
             {
                 return string.Empty;
-            }
-        }
-
-        // 구분자 기반 범위
-        public static string[] Subs(int startIndex, int count)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(_line))
-                    return Array.Empty<string>();
-
-                if (string.IsNullOrEmpty(_delimiter))
-                    return Array.Empty<string>();
-
-                var parts = _line.Split(new[] { _delimiter }, StringSplitOptions.None);
-                if (startIndex <= 0 || startIndex > parts.Length)
-                    return Array.Empty<string>();
-
-                return parts
-                    .Skip(startIndex - 1)
-                    .Take(Math.Min(count, parts.Length - startIndex + 1))
-                    .Select(x => x.Trim())
-                    .ToArray();
-            }
-            catch
-            {
-                return Array.Empty<string>();
             }
         }
 
@@ -898,11 +1014,11 @@ namespace ActuLiteModel
         {
             try
             {
-                if (string.IsNullOrEmpty(_line) || position <= 0 || position > _line.Length)
+                if (string.IsNullOrEmpty(_line) || position < 0 || position > _line.Length)
                     return string.Empty;
 
-                var actualLength = Math.Min(length, _line.Length - position + 1);
-                return _line.Substring(position - 1, actualLength).Trim();
+                var actualLength = Math.Min(length, _line.Length - position);
+                return _line.Substring(position, actualLength).Trim();
             }
             catch
             {
@@ -910,35 +1026,49 @@ namespace ActuLiteModel
             }
         }
 
-        // 위치 기반 연속 범위
-        public static string[] Subs(int startPosition, int segmentLength, int count)
+        // 문자열 배열을 구분자로 연결
+        public static string Join(string delimiter, params object[] values)
         {
             try
             {
-                if (string.IsNullOrEmpty(_line) || startPosition <= 0 ||
-                    segmentLength <= 0 || count <= 0)
-                    return Array.Empty<string>();
+                if (values == null || values.Length == 0)
+                    return string.Empty;
 
-                var result = new List<string>();
+                // 각 값을 문자열로 변환하고 Trim 적용
+                var trimmedValues = values
+                    .Select(v => v?.ToString() ?? string.Empty)
+                    .Select(s => Trim(s));
 
-                for (int i = 0; i < count; i++)
-                {
-                    var position = startPosition + (i * segmentLength);
-                    if (position > _line.Length)
-                        break;
-
-                    var actualLength = Math.Min(segmentLength, _line.Length - position + 1);
-                    if (actualLength <= 0)
-                        break;
-
-                    result.Add(_line.Substring(position - 1, actualLength).Trim());
-                }
-
-                return result.ToArray();
+                return string.Join(delimiter, trimmedValues);
             }
             catch
             {
-                return Array.Empty<string>();
+                return string.Empty;
+            }
+        }
+
+        // 공백 제거
+        public static string Trim(string input)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(input))
+                    return string.Empty;
+
+                // 앞뒤 공백 제거
+                input = input.Trim();
+
+                // 연속된 공백을 하나로 치환
+                while (input.Contains("  "))
+                {
+                    input = input.Replace("  ", " ");
+                }
+
+                return input;
+            }
+            catch
+            {
+                return string.Empty;
             }
         }
     }

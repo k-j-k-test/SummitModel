@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using ActuLiteModel;
-using LiveCharts;
-using LiveCharts.Wpf;
 using System.Windows.Media;
 using System.Windows.Input;
 using System.Linq;
@@ -15,8 +13,8 @@ namespace ActuLight.Pages
     public partial class AssumptionPage : Page
     {
         private DataGrid detailGrid;
-        private CartesianChart chart;
-        private List<AssumptionDisplayData> originalData;
+        private List<AssumptionDisplayData> originalAssumptionData;
+        private List<ExpenseDisplayData> originalExpenseData;
         private bool isSearching = false;
         private RiskRateManagementWindow searchWindow;
 
@@ -32,33 +30,32 @@ namespace ActuLight.Pages
 
         public async Task LoadDataAsync()
         {
-            LoadingOverlay.Visibility = Visibility.Visible;
+            await LoadAssumptionDataAsync();
+            await LoadExpenseDataAsync();
+        }
 
+        public async Task LoadAssumptionDataAsync()
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
             try
             {
                 var mainWindow = (MainWindow)Application.Current.MainWindow;
                 var filePage = mainWindow.pageCache["Pages/FilePage.xaml"] as FilePage;
-
-                if (filePage != null && filePage.excelData != null && filePage.excelData.ContainsKey("assum"))
+                if (filePage?.excelData != null && filePage.excelData.ContainsKey("assum"))
                 {
                     var assumData = filePage.excelData["assum"];
-
                     var headers = assumData[0];
                     var data = assumData.Where(x => x[0] != null).Skip(1).ToList();
-
                     var assumList = ExcelImporter.ConvertToClassList<Input_assum>(data);
-
                     App.ModelEngine.SetAssumption(assumList);
-
-                    originalData = App.ModelEngine.Assumptions.Select(kvp => new AssumptionDisplayData
+                    originalAssumptionData = App.ModelEngine.Assumptions.Select(kvp => new AssumptionDisplayData
                     {
                         Key = kvp.Key,
                         Count = kvp.Value.Count
                     }).ToList();
-
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        AssumptionDataGrid.ItemsSource = originalData;
+                        AssumptionDataGrid.ItemsSource = originalAssumptionData;
                     });
                 }
                 else
@@ -68,7 +65,48 @@ namespace ActuLight.Pages
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"데이터 로드 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Assumption 데이터 로드 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        public async Task LoadExpenseDataAsync()
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                var mainWindow = (MainWindow)Application.Current.MainWindow;
+                var filePage = mainWindow.pageCache["Pages/FilePage.xaml"] as FilePage;
+                if (filePage?.excelData != null && filePage.excelData.ContainsKey("exp"))
+                {
+                    var expData = filePage.excelData["exp"];
+                    var headers = expData[0];
+                    var data = expData.Where(x => x[0] != null).Skip(1).ToList();
+                    var expList = ExcelImporter.ConvertToClassList<Input_exp>(data);
+                    App.ModelEngine.SetExpense(expList);
+                    originalExpenseData = App.ModelEngine.Expenses.Select(kvp => new ExpenseDisplayData
+                    {
+                        Key = kvp.Key,
+                        ProductCode = kvp.Value.First().ProductCode,
+                        RiderCode = kvp.Value.First().RiderCode,
+                        Count = kvp.Value.Count
+                    }).ToList();
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        ExpenseDataGrid.ItemsSource = originalExpenseData;
+                    });
+                }
+                else
+                {
+                    MessageBox.Show("Expense 데이터를 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Expense 데이터 로드 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -79,6 +117,14 @@ namespace ActuLight.Pages
         public class AssumptionDisplayData
         {
             public string Key { get; set; }
+            public int Count { get; set; }
+        }
+
+        public class ExpenseDisplayData
+        {
+            public string Key { get; set; }
+            public string ProductCode { get; set; }
+            public string RiderCode { get; set; }
             public int Count { get; set; }
         }
 
@@ -104,74 +150,14 @@ namespace ActuLight.Pages
                 var detailWindow = new Window
                 {
                     Title = "상세 가정 정보",
-                    Width = 1200,
-                    Height = 800,
+                    Width = 800,
+                    Height = 600,
                     WindowStartupLocation = WindowStartupLocation.CenterScreen
                 };
 
-                var grid = new Grid();
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(5) });
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
                 detailGrid = CreateDetailGrid(assumptions);
-                Grid.SetRow(detailGrid, 0);
-                grid.Children.Add(detailGrid);
-
-                var splitter = new GridSplitter
-                {
-                    Height = 5,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Background = Brushes.Gray
-                };
-                Grid.SetRow(splitter, 1);
-                grid.Children.Add(splitter);
-
-                chart = CreateChart(assumptions);
-                Grid.SetRow(chart, 2);
-                grid.Children.Add(chart);
-
-                detailWindow.Content = grid;
-
-                detailGrid.SelectionChanged += DetailGrid_SelectionChanged;
-
+                detailWindow.Content = detailGrid;
                 detailWindow.Show();
-            }
-        }
-
-        private void DetailGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            var selectedItem = detailGrid.SelectedItem as Input_assum;
-            if (selectedItem != null)
-            {
-                HighlightSeries(selectedItem);
-            }
-        }
-
-        private void HighlightSeries(Input_assum selectedAssumption)
-        {
-            foreach (var series in chart.Series)
-            {
-                if (series is LineSeries lineSeries)
-                {
-                    if (lineSeries.Title == (selectedAssumption.Condition ?? $"Assumption {chart.Series.IndexOf(series) + 1}"))
-                    {
-                        lineSeries.StrokeThickness = 3;
-                        lineSeries.Opacity = 1;
-                        lineSeries.Fill = new SolidColorBrush(Color.FromArgb(10, ((SolidColorBrush)lineSeries.Stroke).Color.R,
-                                                                                 ((SolidColorBrush)lineSeries.Stroke).Color.G,
-                                                                                 ((SolidColorBrush)lineSeries.Stroke).Color.B));
-                        Panel.SetZIndex(lineSeries, 1);
-                    }
-                    else
-                    {
-                        lineSeries.StrokeThickness = 1.5;
-                        lineSeries.Opacity = 0.5;
-                        lineSeries.Fill = Brushes.Transparent;
-                        Panel.SetZIndex(lineSeries, 0);
-                    }
-                }
             }
         }
 
@@ -209,93 +195,6 @@ namespace ActuLight.Pages
             return detailGrid;
         }
 
-        private CartesianChart CreateChart(List<Input_assum> assumptions)
-        {
-            var validRanges = assumptions.Select(a => GetValidDataRange(a.Rates)).ToList();
-            int maxValidIndex = validRanges.Max(r => r) + 5;
-
-            var chart = new CartesianChart();
-
-            chart.Series = new SeriesCollection();
-            chart.AxisX = new AxesCollection
-            {
-                new Axis
-                {
-                    Title = "Index",
-                    FontSize = 12,
-                    Foreground = new SolidColorBrush(Colors.LightGray),
-                    Separator = new LiveCharts.Wpf.Separator { Stroke = new SolidColorBrush(Colors.DimGray) },
-                    FontWeight = FontWeights.Bold,
-                    MinValue = 0,
-                    MaxValue = maxValidIndex
-                }
-            };
-            chart.AxisY = new AxesCollection
-            {
-                new Axis
-                {
-                    Title = "Rate",
-                    FontSize = 12,
-                    Foreground = new SolidColorBrush(Colors.LightGray),
-                    Separator = new LiveCharts.Wpf.Separator { Stroke = new SolidColorBrush(Colors.DimGray) },
-                    FontWeight = FontWeights.Bold,
-                    LabelFormatter = value => Math.Round(value, 4).ToString("F6")
-                }
-            };
-            chart.LegendLocation = LegendLocation.Right;
-            chart.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-            chart.Foreground = new SolidColorBrush(Colors.LightGray);
-            chart.DataTooltip = new DefaultTooltip { Background = new SolidColorBrush(Color.FromRgb(60, 60, 60)) };
-            chart.Zoom = ZoomingOptions.X;
-            chart.Pan = PanningOptions.X;
-            chart.DisableAnimations = true;
-            chart.AnimationsSpeed = TimeSpan.FromMilliseconds(100);
-
-            double minY = assumptions.SelectMany(a => a.Rates).Min();
-            double maxY = assumptions.SelectMany(a => a.Rates).Max();
-            chart.AxisY[0].MinValue = minY;
-            chart.AxisY[0].MaxValue = maxY;
-
-            var colorList = new List<Color>
-            {
-                Colors.Cyan, Colors.Magenta, Colors.LimeGreen, Colors.Yellow, Colors.Orange,
-                Colors.HotPink, Colors.Aqua, Colors.GreenYellow, Colors.Gold, Colors.Orchid
-            };
-
-            for (int i = 0; i < assumptions.Count; i++)
-            {
-                var assumption = assumptions[i];
-                var validRange = validRanges[i];
-                var series = new LineSeries
-                {
-                    Title = assumption.Condition ?? $"Assumption {i + 1}",
-                    Values = new ChartValues<double>(assumption.Rates?.Take(validRange + 5) ?? new List<double>()),
-                    Stroke = new SolidColorBrush(colorList[i % colorList.Count]),
-                    Fill = Brushes.Transparent,
-                    PointGeometry = null,
-                    LineSmoothness = 0,
-                    StrokeThickness = 1.5
-                };
-                chart.Series.Add(series);
-            }
-
-            return chart;
-        }
-
-        private int GetValidDataRange(List<double> rates)
-        {
-            if (rates == null || rates.Count == 0)
-                return 0;
-
-            for (int i = rates.Count - 1; i >= 0; i--)
-            {
-                if (rates[i] != 0)
-                    return i;
-            }
-
-            return 0;
-        }
-
         private async void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (isSearching) return;
@@ -311,45 +210,93 @@ namespace ActuLight.Pages
 
         private void ApplyFilter(string filterText)
         {
-                if (AssumptionDataGrid.ItemsSource == null) return;
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                AssumptionDataGrid.ItemsSource = originalAssumptionData;
+                ExpenseDataGrid.ItemsSource = originalExpenseData;
+                return;
+            }
 
-                if (string.IsNullOrWhiteSpace(filterText))
-                {
-                    AssumptionDataGrid.ItemsSource = originalData;
-                }
-                else
-                {
-                    var filteredData = originalData.Where(item =>
-                        item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
-                    ).ToList();
-                    AssumptionDataGrid.ItemsSource = filteredData;
-                }
+            // Filter Assumption Data
+            var filteredAssumptionData = originalAssumptionData?.Where(item =>
+                item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
+            ).ToList();
+            AssumptionDataGrid.ItemsSource = filteredAssumptionData;
+
+            // Filter Expense Data
+            var filteredExpenseData = originalExpenseData?.Where(item =>
+                item.Key.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.ProductCode?.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.RiderCode?.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Count.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
+            ).ToList();
+            ExpenseDataGrid.ItemsSource = filteredExpenseData;
         }
 
         private void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            // 윈도우가 이미 존재하는지 확인
             if (searchWindow == null || !searchWindow.IsLoaded)
             {
                 searchWindow = new RiskRateManagementWindow();
-
-                // 새 창이 닫힐 때 이벤트 처리
                 searchWindow.Closed += (s, args) => searchWindow = null;
-
-                // 모달리스로 창 표시
                 searchWindow.Show();
             }
             else
             {
-                // 이미 열려있는 창을 활성화
                 searchWindow.Activate();
-
-                // 필요한 경우 창을 최상위로 가져오기
                 if (searchWindow.WindowState == WindowState.Minimized)
                     searchWindow.WindowState = WindowState.Normal;
             }
         }
 
+        private void ExpenseDataGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (ExpenseDataGrid.SelectedItem is ExpenseDisplayData selectedItem)
+            {
+                ShowExpenseDetailWindow(selectedItem.Key);
+            }
+        }
+
+        private void ShowExpenseDetailWindow(string key)
+        {
+            if (App.ModelEngine.Expenses.TryGetValue(key, out List<Input_exp> expenses))
+            {
+                var detailWindow = new Window
+                {
+                    Title = "상세 비용 정보",
+                    Width = 1000,
+                    Height = 600,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen
+                };
+
+                var grid = CreateExpenseDetailGrid(expenses);
+                detailWindow.Content = grid;
+                detailWindow.Show();
+            }
+        }
+
+        private DataGrid CreateExpenseDetailGrid(List<Input_exp> expenses)
+        {
+            var detailGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true
+            };
+
+            // Add columns for expense details
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "ProductCode", Binding = new System.Windows.Data.Binding("ProductCode") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "RiderCode", Binding = new System.Windows.Data.Binding("RiderCode") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Condition", Binding = new System.Windows.Data.Binding("Condition") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Alpha_P", Binding = new System.Windows.Data.Binding("Alpha_P") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Alpha_P2", Binding = new System.Windows.Data.Binding("Alpha_P2") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Alpha_S", Binding = new System.Windows.Data.Binding("Alpha_S") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Beta_P", Binding = new System.Windows.Data.Binding("Beta_P") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Beta_S", Binding = new System.Windows.Data.Binding("Beta_S") });
+            detailGrid.Columns.Add(new DataGridTextColumn { Header = "Gamma", Binding = new System.Windows.Data.Binding("Gamma") });
+
+            detailGrid.ItemsSource = expenses;
+            return detailGrid;
+        }
     }
 }

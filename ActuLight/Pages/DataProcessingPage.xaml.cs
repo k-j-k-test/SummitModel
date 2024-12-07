@@ -10,34 +10,78 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Documents;
 using Flee.PublicTypes;
+using System.Collections.Specialized;
+using System.Threading.Tasks;
+using System.Web;
+using System.Diagnostics;
+using ModernWpf.Controls;
 using System.Text.RegularExpressions;
-using System.Security.Policy;
 
 namespace ActuLight.Pages
 {
-    public partial class DataProcessingPage : Page
+    public partial class DataProcessingPage : System.Windows.Controls.Page
     {
         private ObservableCollection<FileEntry> fileEntries;
-        private Dictionary<string, LTFReader> readers;
+        public Dictionary<string, LTFReader> readers;
         private Dictionary<string, FileCache> fileCache;
-        private bool isProcessing;
         private ExpressionContext context;
+        private bool isProcessing;
+
+        //타이머 관련 필드
+        private System.Windows.Threading.DispatcherTimer processTimer;
+        private LTFReader currentReader;
+        private int currentFileIndex;
+        private int totalFiles;
 
         public DataProcessingPage()
         {
             InitializeComponent();
             InitializeCollections();
             InitializeExpressionContext();
-            SetupInitialState();
+            InitializeContextMenu();
             SetupTextBoxHandlers();
+
+            FleeFunc.Readers = readers;
         }
 
         private void InitializeCollections()
         {
+            EmptyMessage.Visibility = Visibility.Visible;
+
             fileEntries = new ObservableCollection<FileEntry>();
             readers = new Dictionary<string, LTFReader>();
             fileCache = new Dictionary<string, FileCache>(); // Initialize cache
             FilesGrid.ItemsSource = fileEntries;
+
+            fileEntries.CollectionChanged += (s, e) =>
+            {
+                EmptyMessage.Visibility = fileEntries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            };
+
+            // FileEntry의 Key 속성 변경 이벤트 구독
+            ((INotifyCollectionChanged)FilesGrid.Items).CollectionChanged += (s, e) =>
+            {
+                if (e.NewItems != null)
+                {
+                    foreach (FileEntry entry in e.NewItems)
+                    {
+                        entry.PropertyChanged += (sender, args) =>
+                        {
+                            if (args.PropertyName == nameof(FileEntry.Key) && sender is FileEntry fileEntry)
+                            {
+                                UpdateSampleKeys(fileEntry);
+                            }
+                        };
+                    }
+                }
+            };
+
+            processTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+
+            processTimer.Tick += ProcessTimer_Tick;
         }
 
         private void InitializeExpressionContext()
@@ -52,8 +96,70 @@ namespace ActuLight.Pages
             }
         }
 
+        private void InitializeContextMenu()
+        {
+            var contextMenu = new ContextMenu();
+
+            var openFolderMenuItem = new MenuItem { Header = "폴더로 이동" };
+            openFolderMenuItem.Click += (s, e) => {
+                if (FilesGrid.SelectedItem is FileEntry selectedEntry)
+                {
+                    string baseDirectory = LTFProcessor.GetBaseDirectory(selectedEntry.Path);
+                    if (Directory.Exists(baseDirectory))
+                    {
+                        System.Diagnostics.Process.Start("explorer.exe", baseDirectory);
+                    }
+                    else
+                    {
+                        MessageBox.Show("처리 폴더가 아직 생성되지 않았습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+            };
+
+            var deleteMenuItem = new MenuItem { Header = "삭제" };
+            deleteMenuItem.Click += (s, e) => {
+                if (FilesGrid.SelectedItems.Count > 0)
+                {
+                    var selectedEntries = FilesGrid.SelectedItems.Cast<FileEntry>().ToList();
+                    foreach (var entry in selectedEntries)
+                    {
+                        fileEntries.Remove(entry);
+                        readers.Remove(Path.GetFileName(entry.Path));
+                        fileCache.Remove(Path.GetFileName(entry.Path));
+                    }
+
+                    //update file number
+                    for (int i = 0; i < fileEntries.Count; i++)
+                    {
+                        fileEntries[i].Number = i + 1;
+                    }
+
+                    // SampleLinesTextBox 내용 지우기
+                    SampleLinesTextBox.Document = new FlowDocument();
+                }
+            };
+
+            var deleteAllMenuItem = new MenuItem { Header = "전체 삭제" };
+            deleteAllMenuItem.Click += (s, e) => {
+                fileEntries.Clear();
+                readers.Clear();
+                fileCache.Clear();
+
+                // SampleLinesTextBox 내용 지우기
+                SampleLinesTextBox.Document = new FlowDocument();
+            };
+
+            contextMenu.Items.Add(openFolderMenuItem);
+            contextMenu.Items.Add(deleteMenuItem);
+            contextMenu.Items.Add(deleteAllMenuItem);
+
+            FilesGrid.ContextMenu = contextMenu;
+        }
+
         private void SetupTextBoxHandlers()
         {
+            ProcessTypeComboBox.SelectedIndex = 0;
+
             for (int i = 1; i <= 8; i++)
             {
                 var textBox = FindName($"A{i}TextBox") as TextBox;
@@ -61,7 +167,6 @@ namespace ActuLight.Pages
                 {
                     textBox.TextChanged += (s, e) =>
                     {
-                        UpdateVariableValue((TextBox)s);
                         if (FilesGrid.SelectedItem is FileEntry selectedEntry)
                         {
                             UpdateSampleLines(selectedEntry.Path);
@@ -69,76 +174,35 @@ namespace ActuLight.Pages
                     };
                 }
             }
-        }
 
-        private void SetupInitialState()
-        {
-            ProcessTypeComboBox.SelectedIndex = 0;
-            UpdateProcessControls();
+            SampleLinesTextBox.PreviewMouseLeftButtonDown += UpdateCaretPosition;
+            SampleLinesTextBox.SelectionChanged += UpdateCaretPosition;
         }
 
         private void ProcessTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            UpdateProcessControls();
-        }
+            //if (SearchTextBox != null)
+            //{
+            //    var comboBox = sender as ComboBox;
+            //    var selectedItem = comboBox?.SelectedItem as ComboBoxItem;
 
-        private void UpdateProcessControls()
-        {
-            ProcessSpecificControls.Children.Clear();
-            var label = new Label { Content = GetProcessSpecificLabel() };
-            Grid.SetColumn(label, 0);
+            //    // Enable SearchTextBox only when "Index" is selected
+            //    SearchTextBox.IsEnabled = selectedItem?.Content.ToString() == "Index";
 
-            var textBox = new TextBox { Width = 300, HorizontalAlignment = HorizontalAlignment.Left };
-            Grid.SetColumn(textBox, 1);
-
-            ProcessSpecificControls.Children.Add(label);
-            ProcessSpecificControls.Children.Add(textBox);
-        }
-
-        private void UpdateVariableValue(TextBox textBox)
-        {
-            var match = Regex.Match(textBox.Name, @"A(\d)TextBox");
-            if (match.Success)
-            {
-                string varName = $"a{match.Groups[1].Value}";
-                if (int.TryParse(textBox.Text, out int value))
-                {
-                    context.Variables[varName] = value;
-                }
-                else if (textBox.Text.Contains(","))
-                {
-                    var parts = textBox.Text.Split(',');
-                    if (parts.Length == 2 &&
-                        int.TryParse(parts[0], out int start) &&
-                        int.TryParse(parts[1], out int length))
-                    {
-                        context.Variables[varName] = new[] { start, length };
-                    }
-                }
-            }
-        }
-
-        private string GetProcessSpecificLabel()
-        {
-            if (ProcessTypeComboBox.SelectedItem is ComboBoxItem selectedItem)
-            {
-                switch (selectedItem.Content.ToString())
-                {
-                    case "Split": return "Split By:";
-                    case "Filter": return "Filter Expression:";
-                    case "Count": return "Count By:";
-                    case "Distinct": return "Distinct By:";
-                    default: return "Expression:";
-                }
-            }
-            return "Expression:";
+            //    // Clear the search text when switching away from Index
+            //    if (!SearchTextBox.IsEnabled)
+            //    {
+            //        SearchTextBox.Text = string.Empty;
+            //        SearchTextBox.ItemsSource = null;
+            //    }
+            //}
         }
 
         private async void StartButton_Click(object sender, RoutedEventArgs e)
         {
-            if (fileEntries.Count == 0)
+            if (FilesGrid.SelectedItems.Count == 0)
             {
-                MessageBox.Show("Please add files to process.", "No Files", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Please select files to process.", "No Files Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -147,58 +211,102 @@ namespace ActuLight.Pages
                 isProcessing = true;
                 StartButton.IsEnabled = false;
                 CancelButton.IsEnabled = true;
+                StatusTextBox.Text = "0%";
 
-                foreach (var entry in fileEntries)
+                var filesToProcess = FilesGrid.SelectedItems.Cast<FileEntry>().ToList();
+                totalFiles = filesToProcess.Count;
+                processTimer.Start();
+
+                for (currentFileIndex = 0; currentFileIndex < filesToProcess.Count; currentFileIndex++)
                 {
-                    if (!readers.TryGetValue(entry.Path, out var reader))
+                    if (!isProcessing) break;
+
+                    var entry = filesToProcess[currentFileIndex];
+                    if (string.IsNullOrWhiteSpace(entry.Key))
+                    {
+                        throw new Exception($"Key is required for file: {entry.Path}");
+                    }
+
+                    FilesGrid.SelectedItems.Clear();
+                    FilesGrid.SelectedItem = entry;
+
+                    string fileName = Path.GetFileName(entry.Path);
+                    if (!readers.TryGetValue(fileName, out var reader))
                     {
                         reader = new LTFReader(entry.Path);
-                        readers[entry.Path] = reader;
+                        readers[fileName] = reader;
                     }
 
-                    var processType = (ProcessTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString();
-                    var expressionStr = (ProcessSpecificControls.Children[1] as TextBox).Text;
+                    reader.IsCanceled = false;
+                    reader.Progress = 0;
+                    currentReader = reader;
+                    var processType = ProcessTypeComboBox.Text;
+                    var expression = context.CompileGeneric<string>(entry.Key);
 
-                    if (string.IsNullOrWhiteSpace(expressionStr))
+                    // KeySelector 설정
+                    reader.KeySelector = line => GetExpressionValue(line, expression);
+
+                    // Index 처리인 경우에만 KeySelectorExpression 설정
+                    if (processType == "Index")
                     {
-                        throw new Exception("수식을 입력해주세요");
+                        string keyExpression = entry.Key;
+                        for (int i = 1; i <= 8; i++)
+                        {
+                            var textBox = FindName($"A{i}TextBox") as TextBox;
+                            if (textBox != null && !string.IsNullOrWhiteSpace(textBox.Text))
+                            {
+                                string pattern = $@"\ba{i}\b";
+                                string value = textBox.Text;
+
+                                if (value.Contains(",") || int.TryParse(value, out int fieldIndex))
+                                {
+                                    keyExpression = Regex.Replace(keyExpression, pattern, $"sub({value})");
+                                }
+                            }
+                        }
+                        reader.KeySelectorExpression = keyExpression;
                     }
 
-                    IGenericExpression<string> expression = context.CompileGeneric<string>((ProcessSpecificControls.Children[1] as TextBox).Text);
-                    
-                    switch (processType)
+                    await Task.Run(() =>
                     {
-                        case "Split":
-                            LTFProcessor.Split(reader, line => GetExpressionValue(line, expression));
-                            break;
-                        case "Filter":
-                            LTFProcessor.Filter(reader, line => EvaluateFilterExpression(line, expression));
-                            break;
-                        case "Count":
-                            LTFProcessor.Count(reader, line => GetExpressionValue(line, expression));
-                            break;
-                        case "Distinct":
-                            LTFProcessor.Distinct(reader, line => GetExpressionValue(line, expression));
-                            break;
-                    }
-
-                    if (!isProcessing) break;
+                        switch (processType)
+                        {
+                            case "Split":
+                                LTFProcessor.Split(reader, line => GetExpressionValue(line, expression));
+                                break;
+                            case "Count":
+                                LTFProcessor.Count(reader, line => GetExpressionValue(line, expression));
+                                break;
+                            case "Distinct":
+                                LTFProcessor.Distinct(reader, line => GetExpressionValue(line, expression));
+                                break;
+                            case "Index":
+                                reader.IndexPath = reader.GetIndexPath();
+                                reader.FileLastWriteTime = File.GetLastWriteTime(reader.FilePath);
+                                reader.KeySelectorHash = reader.GetKeySelectorHash(reader.KeySelector);
+                                reader.LoadIndex();
+                                break;
+                        }
+                    });
                 }
 
                 if (isProcessing)
                 {
-                    MessageBox.Show("Processing completed successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    StatusTextBox.Text = $"{currentFileIndex}/{filesToProcess.Count} - Completed";
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error during processing: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusTextBox.Text = "Error";
             }
             finally
             {
                 isProcessing = false;
                 StartButton.IsEnabled = true;
                 CancelButton.IsEnabled = false;
+                processTimer.Stop();
+                currentReader = null;
             }
         }
 
@@ -209,6 +317,100 @@ namespace ActuLight.Pages
             {
                 reader.IsCanceled = true;
             }
+            StatusTextBox.Text = $"Cancelled at {currentFileIndex + 1}/{totalFiles} - {(currentReader.Progress * 100):F1}%";
+        }
+
+        public async void LoadExternalButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoadExternalButton.IsEnabled = false;
+                string externalDataFolder = Path.Combine(FilePage.SelectedFolderPath, "ExternalData");
+
+                if (!Directory.Exists(externalDataFolder))
+                {
+                    MessageBox.Show($"외부 데이터 폴더가 존재하지 않습니다: {externalDataFolder}",
+                        "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // 폴더 내의 모든 파일 가져오기 (하위 폴더 제외)
+                var files = Directory.GetFiles(externalDataFolder);
+
+                foreach (string file in files)
+                {
+                    // 이미 로드된 파일인지 확인
+                    if (readers.ContainsKey(file))
+                        continue;
+
+                    await Task.Run(() => LoadExternalFile(file));
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"외부 데이터 로드 중 오류 발생: {ex.Message}",
+                    "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                LoadExternalButton.IsEnabled = true;
+            }
+        }
+
+        public void LoadExternalFile(string file)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    string fileName = Path.GetFileName(file);
+
+                    // 이미 같은 파일명이 있는지 확인
+                    if (readers.ContainsKey(fileName))
+                    {
+                        return;
+                    }
+
+                    var reader = new LTFReader(file);
+                    readers[fileName] = reader;
+
+                    // 인덱스 파일 경로 설정 및 로드 시도
+                    reader.IndexPath = reader.GetIndexPath();
+                    reader.FileLastWriteTime = File.GetLastWriteTime(file);
+
+                    if (reader.LoadIndexWithoutKeySelector())
+                    {
+                        if (!string.IsNullOrEmpty(reader.KeySelectorExpression))
+                        {
+                            var expression = context.CompileGeneric<string>(reader.KeySelectorExpression);
+                            reader.KeySelector = line => GetExpressionValue(line, expression);
+                        }
+                    }
+
+                    var sampleLines = File.ReadLines(file).Take(100).ToList();
+                    fileCache[fileName] = new FileCache(file, sampleLines, reader.Delimiter);
+
+                    var entry = new FileEntry
+                    {
+                        Number = fileEntries.Count + 1,
+                        Path = file,
+                        Key = reader.KeySelectorExpression ?? string.Empty,
+                    };
+                    fileEntries.Add(entry);
+
+                    DelimiterTextBox.Text = FormatDelimiter(reader.Delimiter);
+                    FilesGrid.SelectedItem = entry;
+                    UpdateSampleLines(fileName);
+                });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"파일 '{Path.GetFileName(file)}' 처리 중 오류 발생: {ex.Message}",
+                        "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                });
+            }
         }
 
         private void FilesGrid_Drop(object sender, DragEventArgs e)
@@ -216,30 +418,40 @@ namespace ActuLight.Pages
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                foreach (string file in files)
+                foreach (string file in files.OrderBy(x => x))
                 {
                     if (File.Exists(file))
                     {
                         try
                         {
+                            string fileName = Path.GetFileName(file);
+
+                            // 이미 같은 파일명이 있는지 확인
+                            if (readers.ContainsKey(fileName))
+                            {
+                                MessageBox.Show($"이미 같은 이름의 파일이 있습니다: {fileName}",
+                                    "중복 파일", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                continue;
+                            }
+
                             var reader = new LTFReader(file);
-                            readers[file] = reader;
+                            readers[fileName] = reader;
 
                             // Read and cache sample lines
                             var sampleLines = File.ReadLines(file).Take(100).ToList();
-                            fileCache[file] = new FileCache(file, sampleLines, reader.Delimiter);
+                            fileCache[fileName] = new FileCache(file, sampleLines, reader.Delimiter);
 
                             var entry = new FileEntry
                             {
                                 Number = fileEntries.Count + 1,
                                 Path = file,
-                                Key = Path.GetFileNameWithoutExtension(file)
+                                Key = "a1"
                             };
                             fileEntries.Add(entry);
 
                             DelimiterTextBox.Text = FormatDelimiter(reader.Delimiter);
                             FilesGrid.SelectedItem = entry;
-                            UpdateSampleLines(file);
+                            UpdateSampleLines(fileName);
                         }
                         catch (Exception ex)
                         {
@@ -268,27 +480,255 @@ namespace ActuLight.Pages
         {
             if (FilesGrid.SelectedItem is FileEntry selectedEntry)
             {
-                // 선택된 파일의 구분자 표시
-                if (readers.TryGetValue(selectedEntry.Path, out var reader))
+                string fileName = Path.GetFileName(selectedEntry.Path);
+                if (readers.TryGetValue(fileName, out var reader))
                 {
-                    DelimiterTextBox.Text = reader.Delimiter;
+                    DelimiterTextBox.Text = FormatDelimiter(reader.Delimiter);
+                    SkipTextBox.Text = reader.SkipLines.ToString();
                 }
-                UpdateSampleLines(selectedEntry.Path);
+                UpdateSampleLines(fileName);
+                UpdateSampleKeys(selectedEntry);
             }
         }
 
-        private void UpdateSampleLines(string filePath)
+        private void FilesGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                // Enter 키 이벤트를 처리했다고 표시
+                e.Handled = true;
+
+                // 현재 셀의 편집을 완료
+                DataGrid grid = (DataGrid)sender;
+                TextBox cell = Keyboard.FocusedElement as TextBox;
+
+                grid.CommitEdit();
+
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (cell != null)
+                    {
+                        // 또는 ContentPresenter를 통해 값 가져오기
+                        var selectedItem = (FileEntry)grid.SelectedItem;
+                        selectedItem.Key = cell.Text;
+                        UpdateSampleKeys(selectedItem);
+                    }             
+                });
+            }
+        }
+
+        private void SkipTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (FilesGrid.SelectedItem is FileEntry selectedEntry)
+            {
+                string fileName = Path.GetFileName(selectedEntry.Path);
+                if (readers.TryGetValue(fileName, out var reader))
+                {
+                    if (int.TryParse(SkipTextBox.Text, out int skipLines) && skipLines >= 0)
+                    {
+                        reader.SkipLines = skipLines;
+                        UpdateSampleLines(fileName);
+                    }
+                }
+            }
+        }
+
+        private void SearchTextBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        {
+            if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+            {
+                try
+                {
+                    if (FilesGrid.SelectedItem is FileEntry selectedEntry)
+                    {
+                        string fileName = Path.GetFileName(selectedEntry.Path);
+                        if (readers.TryGetValue(fileName, out var reader))
+                        {
+                            var searchText = sender.Text.ToLower();
+                            if (string.IsNullOrEmpty(searchText))
+                            {
+                                sender.ItemsSource = null;
+                                return;
+                            }
+
+                            var sortedKeys = reader.Index.Keys.ToList();
+
+                            // 이진 탐색으로 시작 위치 찾기
+                            int index = sortedKeys.BinarySearch(searchText);
+                            if (index < 0)
+                                index = ~index;
+
+                            var suggestions = new List<string>();
+                            while (index < sortedKeys.Count && suggestions.Count < 100)
+                            {
+                                string key = sortedKeys[index];
+                                if (!key.ToLower().StartsWith(searchText))
+                                    break;
+
+                                suggestions.Add(key);
+                                index++;
+                            }
+
+                            sender.ItemsSource = suggestions;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error during autocomplete: {ex.Message}");
+                }
+            }
+        }
+
+        private void SearchTextBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+        {
+            if (args.SelectedItem != null)
+            {
+                sender.Text = args.SelectedItem.ToString();
+            }
+        }
+
+        private void SearchTextBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        {
+            string searchText;
+            if (args.ChosenSuggestion != null)
+            {
+                // 사용자가 제안된 항목을 선택한 경우
+                searchText = args.ChosenSuggestion.ToString();
+            }
+            else
+            {
+                // 사용자가 Enter를 누른 경우
+                searchText = args.QueryText;
+            }
+
+            UpdateSearchResults(searchText);
+        }
+
+        private void UpdateCaretPosition(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (!fileCache.TryGetValue(filePath, out var cache))
+                var caretPosition = SampleLinesTextBox.CaretPosition;
+                if (caretPosition != null)
+                {
+                    var text = new TextRange(SampleLinesTextBox.Document.ContentStart, caretPosition).Text;
+
+                    var lineNumber = text.Count(c => c == '\n') + 1;
+
+                    var lastNewLine = text.LastIndexOf('\n');
+                    var columnNumber = lastNewLine == -1 ? text.Length : text.Length - lastNewLine - 1;
+
+                    CursorPositionText.Text = $"Line: {lineNumber}, Column: {columnNumber}";
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating caret position: {ex.Message}");
+                CursorPositionText.Text = "Line: -, Column: -";
+            }
+        }
+
+        private void UpdateSearchResults(string searchText)
+        {
+            if (FilesGrid.SelectedItem is FileEntry selectedEntry &&
+                !string.IsNullOrWhiteSpace(searchText))
+            {
+                string fileName = Path.GetFileName(selectedEntry.Path);
+                if (readers.TryGetValue(fileName, out var reader))
+                {
+                    try
+                    {
+                        var searchResults = reader.GetLines(searchText, 100);
+
+                        var document = new FlowDocument
+                        {
+                            PageWidth = searchResults.Count > 0 ?
+                                searchResults.Max(x => x.Length) * 8 + searchResults.First().Count(x => x == '\t') * 32 : 400,
+                            PagePadding = new Thickness(0)
+                        };
+
+                        var paragraph = new Paragraph();
+                        document.Blocks.Add(paragraph);
+
+                        var highlights = GetHighlightRules();
+                        var hasDelimiter = reader.Delimiter != "None" && !string.IsNullOrEmpty(reader.Delimiter);
+
+                        // Sample Keys 문서 준비
+                        var keysDocument = new FlowDocument
+                        {
+                            PageWidth = 2000,
+                            PagePadding = new Thickness(0)
+                        };
+                        var keysParagraph = new Paragraph();
+                        keysDocument.Blocks.Add(keysParagraph);
+
+                        // Key 식을 컴파일
+                        IGenericExpression<string> expression = null;
+                        if (!string.IsNullOrWhiteSpace(selectedEntry.Key))
+                        {
+                            expression = context.CompileGeneric<string>(selectedEntry.Key);
+                        }
+
+                        foreach (var line in searchResults)
+                        {
+                            // SampleLines 업데이트
+                            AddHighlightedLine(paragraph, line, highlights, hasDelimiter, reader.Delimiter);
+                            paragraph.Inlines.Add(new Run(Environment.NewLine));
+
+                            // SampleKeys 업데이트
+                            if (expression != null)
+                            {
+                                string keyValue = GetExpressionValue(line, expression);
+                                keysParagraph.Inlines.Add(new Run(keyValue));
+                                keysParagraph.Inlines.Add(new Run(Environment.NewLine));
+                            }
+                        }
+
+                        if (searchResults.Count == 0)
+                        {
+                            paragraph.Inlines.Add(new Run("No results found."));
+                            keysParagraph.Inlines.Add(new Run("No results found."));
+                        }
+                        else if (searchResults.Count == 100)
+                        {
+                            paragraph.Inlines.Add(new Run("Showing first 100 results..."));
+                            keysParagraph.Inlines.Add(new Run("Showing first 100 results..."));
+                        }
+
+                        SampleLinesTextBox.Document = document;
+                        SampleKeysTextBox.Document = keysDocument;
+                    }
+                    catch (Exception ex)
+                    {
+                        var errorMessage = $"Error during search: {ex.Message}";
+
+                        // SampleLinesTextBox용 document
+                        var errorDocument1 = new FlowDocument();
+                        errorDocument1.Blocks.Add(new Paragraph(new Run(errorMessage)));
+                        SampleLinesTextBox.Document = errorDocument1;
+
+                        // SampleKeysTextBox용 document
+                        var errorDocument2 = new FlowDocument();
+                        errorDocument2.Blocks.Add(new Paragraph(new Run(errorMessage)));
+                        SampleKeysTextBox.Document = errorDocument2;
+                    }
+                }
+            }
+        }
+
+        private void UpdateSampleLines(string fileName)
+        {
+            try
+            {
+                if (!fileCache.TryGetValue(Path.GetFileName(fileName), out var cache))
                 {
                     throw new Exception("File cache not found");
                 }
 
                 var document = new FlowDocument
                 {
-                    PageWidth = fileCache[filePath].SampleLines.Max(x => x.Length) * 8,
+                    PageWidth = fileCache[Path.GetFileName(fileName)].SampleLines.Max(x => x.Length) * 8 + fileCache[Path.GetFileName(fileName)].SampleLines.First().Count(x => x == '\t') * 32,
                     PagePadding = new Thickness(0)
                 };
                 var paragraph = new Paragraph();
@@ -297,7 +737,30 @@ namespace ActuLight.Pages
                 var highlights = GetHighlightRules();
                 var hasDelimiter = cache.Delimiter != "None" && !string.IsNullOrEmpty(cache.Delimiter);
 
-                foreach (var line in cache.SampleLines)
+                // 현재 Skip 값 가져오기
+                int skipLines = 0;
+                if (readers.TryGetValue(Path.GetFileName(fileName), out var reader))
+                {
+                    skipLines = reader.SkipLines;
+                }
+
+                // Skip된 라인 표시
+                if (skipLines > 0)
+                {
+                    for (int i = 0; i < Math.Min(skipLines, cache.SampleLines.Count); i++)
+                    {
+                        var skippedRun = new Run(cache.SampleLines[i])
+                        {
+                            Foreground = System.Windows.Media.Brushes.Gray,
+                            TextDecorations = TextDecorations.Strikethrough
+                        };
+                        paragraph.Inlines.Add(skippedRun);
+                        paragraph.Inlines.Add(new Run(Environment.NewLine));
+                    }
+                }
+
+                // Skip 이후의 라인 표시
+                foreach (var line in cache.SampleLines.Skip(skipLines))
                 {
                     AddHighlightedLine(paragraph, line, highlights, hasDelimiter, cache.Delimiter);
                     paragraph.Inlines.Add(new Run(Environment.NewLine));
@@ -311,6 +774,60 @@ namespace ActuLight.Pages
                 errorDocument.Blocks.Add(new Paragraph(new Run($"Error reading file: {ex.Message}")));
                 SampleLinesTextBox.Document = errorDocument;
             }
+        }
+
+        private void UpdateSampleKeys(FileEntry entry)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    SampleKeysTextBox.Document = new FlowDocument();
+                    return;
+                }
+
+                string fileName = Path.GetFileName(entry.Path);
+                if (!fileCache.TryGetValue(fileName, out var cache))
+                {
+                    throw new Exception("File cache not found");
+                }
+
+                var document = new FlowDocument
+                {
+                    PageWidth = 2000,
+                    PagePadding = new Thickness(0)
+                };
+                var paragraph = new Paragraph();
+                document.Blocks.Add(paragraph);
+
+                IGenericExpression<string> expression = context.CompileGeneric<string>(entry.Key);
+
+                foreach (var line in cache.SampleLines)
+                {
+                    string keyValue = GetExpressionValue(line, expression);
+                    paragraph.Inlines.Add(new Run(keyValue));
+                    paragraph.Inlines.Add(new Run(Environment.NewLine));
+                }
+
+                SampleKeysTextBox.Document = document;
+            }
+            catch (Exception ex)
+            {
+                var errorDocument = new FlowDocument();
+                errorDocument.Blocks.Add(new Paragraph(new Run($"Error calculating keys: {ex.Message}")));
+                SampleKeysTextBox.Document = errorDocument;
+            }
+        }
+
+        private void ProcessTimer_Tick(object sender, EventArgs e)
+        {
+            if (!isProcessing || currentReader == null)
+            {
+                processTimer.Stop();
+                return;
+            }
+
+            StatusTextBox.Text = $"{currentFileIndex + 1}/{totalFiles} - {(currentReader.Progress * 100):F1}%";
         }
 
         private List<(string text, string style)> GetHighlightRules()
@@ -345,15 +862,15 @@ namespace ActuLight.Pages
                 {
                     // 구분자가 있는 경우, 필드의 특정 영역 선택
                     var parts = line.Split(new[] { delimiter }, StringSplitOptions.None);
-                    if (fieldIndex > 0 && fieldIndex <= parts.Length)
+                    if (fieldIndex >= 0 && fieldIndex <= parts.Length)
                     {
                         int startPos = 0;
-                        for (int j = 0; j < fieldIndex - 1; j++)
+                        for (int j = 0; j < fieldIndex ; j++)
                         {
                             startPos += parts[j].Length + delimiter.Length;
                         }
 
-                        int length = parts[fieldIndex - 1].Length;
+                        int length = parts[fieldIndex ].Length;
 
                         // 해당 위치의 텍스트에 스타일 적용
                         ApplyStyleToRange(inlines, startPos, length, style);
@@ -456,7 +973,7 @@ namespace ActuLight.Pages
             if (!(FilesGrid.SelectedItem is FileEntry selectedFile))
                 return;
 
-            var reader = readers[selectedFile.Path];
+            var reader = readers[Path.GetFileName(selectedFile.Path)];
             var hasDelimiter = !string.IsNullOrEmpty(reader.Delimiter);
 
             for (int i = 1; i <= 8; i++)
@@ -467,23 +984,30 @@ namespace ActuLight.Pages
                     string varName = $"a{i}";
                     string value = "";
 
-                    if (hasDelimiter)
+                    string textBoxContent = textBox.Text;
+
+                    if (textBoxContent.Contains(","))
                     {
-                        if (int.TryParse(textBox.Text, out int fieldIndex))
+                        // Substring 처리
+                        var range = textBoxContent.Split(',');
+                        if (range.Length == 2 &&
+                            int.TryParse(range[0], out int start) &&
+                            int.TryParse(range[1], out int length) &&
+                            start >= 0 && length > 0 && start + length <= line.Length)
                         {
-                            var parts = line.Split(new[] { reader.Delimiter }, StringSplitOptions.None);
-                            if (fieldIndex > 0 && fieldIndex <= parts.Length)
-                            {
-                                value = parts[fieldIndex - 1].Trim();
-                            }
+                            value = line.Substring(start, length).Trim();
                         }
                     }
-                    else
+                    else if (int.TryParse(textBoxContent, out int fieldOrPosition))
                     {
-                        if (int.TryParse(textBox.Text, out int position) &&
-                            position > 0 && position <= line.Length)
+                        if (hasDelimiter)
                         {
-                            value = line.Substring(position - 1, 1);
+                            // Delimiter 기반 처리
+                            var parts = line.Split(new[] { reader.Delimiter }, StringSplitOptions.None);
+                            if (fieldOrPosition >= 0 && fieldOrPosition <= parts.Length)
+                            {
+                                value = parts[fieldOrPosition].Trim();
+                            }
                         }
                     }
 
@@ -495,24 +1019,23 @@ namespace ActuLight.Pages
         private string GetExpressionValue(string line, IGenericExpression<string> expression)
         {
             // 현재 라인에 대해 변수 설정
-            SetVariablesForLine(line);
+            Dispatcher.Invoke(() =>
+            {
+                var selectedFile = FilesGrid.SelectedItem as FileEntry;
+                var delimiter = readers[Path.GetFileName(selectedFile.Path)].Delimiter;
+                TextParser.SetLine(line, delimiter);
+                SetVariablesForLine(line);
+            });
 
             try
             {
-                // 표현식 평가
-                return EvaluateExpression(expression);
+                var result = expression.Evaluate();
+                return result?.ToString() ?? "";
             }
             catch (Exception ex)
             {
                 return $"Expression Error: {ex.Message}";
             }
-        }
-
-        private bool EvaluateFilterExpression(string line, IGenericExpression<string> expression)
-        {
-            // Implement filter expression evaluation logic here
-            // This is a simplified example
-            return true;
         }
 
         private string FormatDelimiter(string delimiter)
@@ -529,20 +1052,6 @@ namespace ActuLight.Pages
                 _ => $"Custom ({delimiter})"
             };
         }
-
-        private string EvaluateExpression(IGenericExpression<string> expression)
-        {
-            try
-            {
-                var result = expression.Evaluate();
-                return result?.ToString() ?? "";
-            }
-            catch (Exception ex)
-            {
-                return $"Expression Error: {ex.Message}";
-            }
-        }
-
     }
 
     public class FileEntry : INotifyPropertyChanged
@@ -602,5 +1111,4 @@ namespace ActuLight.Pages
             Delimiter = delimiter;
         }
     }
-
 }

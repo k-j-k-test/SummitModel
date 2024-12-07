@@ -35,6 +35,26 @@ namespace ActuLight
         private HashSet<string> _models = new HashSet<string>();
         private HashSet<string> _contextVariables = new HashSet<string>();
         private HashSet<string> _assumptions = new HashSet<string>();
+        private HashSet<string> _expenses = new HashSet<string>
+        {
+            "Alpha_P",
+            "Alpha_P2",
+            "Alpha_S",
+            "Alpha_P20",
+            "Beta_P",
+            "Beta_S",
+            "Beta_Fix",
+            "BetaPrime_P",
+            "BetaPrime_S",
+            "BetaPrime_Fix",
+            "Gamma",
+            "Refund_P",
+            "Refund_S",
+            "Etc1",
+            "Etc2",
+            "Etc3",
+            "Etc4"
+        };
 
         private List<string> _functions = new List<string>();
         private Dictionary<string, string> _cellCompletions = new Dictionary<string, string>();
@@ -115,6 +135,15 @@ namespace ActuLight
                 // We're inside Assum function, offer assumption completions
                 completionData.AddRange(GetFilteredCompletionData(_assumptions, currentWord, CompletionType.Assumption));
             }
+
+            // Check if we're inside Exp function
+            var expMatch = Regex.Match(textBeforeCaret, @"Exp\([""']([^""']*)$");
+            if (expMatch.Success)
+            {
+                // We're inside Exp function, offer expense completions
+                completionData.AddRange(GetFilteredCompletionData(_expenses, currentWord, CompletionType.Expense));
+            }
+
             else
             {
                 // Check if we're after a model name and a dot
@@ -546,6 +575,10 @@ namespace ActuLight
         // Example: "Assum("assumption
         public static readonly Regex AssumInside = new Regex(@"Assum\([""']([^""']*)$");
 
+        // Matches the inside of an Exp function call, used for auto-completion
+        // Example: "Exp("expense
+        public static readonly Regex ExpInside = new Regex(@"Exp\([""']([^""']*)$");
+
         // Matches model and cell references for auto-completion
         // Example: "modelName.cellName"
         public static readonly Regex ModelDotCell = new Regex(@"(\w+)({[^}]*})?\.([\w]*)$");
@@ -593,6 +626,7 @@ namespace ActuLight
         Model,
         ContextVariable,
         Assumption,
+        Expense,
         CellAutoCompletion
     }
 
@@ -624,6 +658,7 @@ namespace ActuLight
                 CompletionType.ContextVariable => "ContextVariable",
                 CompletionType.Assumption => "ContextVariable",
                 CompletionType.CellAutoCompletion => "Cell",
+                CompletionType.Expense => "ContextVariable",
                 _ => "Default"
             };
 
@@ -720,6 +755,10 @@ namespace ActuLight
                     {
                         textArea.Caret.Offset -= 5;
                     }
+                    else if(Text == "Exp")
+                    {
+                        textArea.Caret.Offset -= 2;
+                    }
                     else
                     {
                         textArea.Caret.Offset -= 1;
@@ -779,6 +818,10 @@ namespace ActuLight
             if (Text == "Assum")
             {
                 return $"{Text}(\"\")[t]";
+            }
+            if (Text == "Exp")
+            {
+                return $"{Text}(\"\")";
             }
             else
             {

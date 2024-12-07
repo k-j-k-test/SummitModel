@@ -41,7 +41,7 @@ namespace ActuLight.Pages
                 App.SettingsManager.SaveSettings();
 
                 var mainWindow = (MainWindow)Application.Current.MainWindow;
-                if (mainWindow.pageCache.TryGetValue("Pages/SpreadsheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
+                if (mainWindow.pageCache.TryGetValue("Pages/SpreadSheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
                 {
                     spreadSheetPage.SignificantDigits = App.SettingsManager.CurrentSettings.SignificantDigits;
                     spreadSheetPage.UpdateInvokes();
@@ -57,7 +57,7 @@ namespace ActuLight.Pages
                 App.SettingsManager.SaveSettings();
 
                 var mainWindow = (MainWindow)Application.Current.MainWindow;
-                if (mainWindow.pageCache.TryGetValue("Pages/SpreadsheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
+                if (mainWindow.pageCache.TryGetValue("Pages/SpreadSheetPage.xaml", out var page) && page is SpreadSheetPage spreadSheetPage)
                 {
                     spreadSheetPage.UpdateInvokes();
                 }

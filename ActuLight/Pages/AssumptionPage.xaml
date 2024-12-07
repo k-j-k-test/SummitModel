@@ -23,15 +23,25 @@
                     <TextBlock Text="위험률 검색"/>
                 </StackPanel>
             </Button>
-
         </StackPanel>
-        
-        <!-- DataGrid -->
-        <DataGrid x:Name="AssumptionDataGrid" Grid.Row="1" 
-                  AutoGenerateColumns="True" 
-                  IsReadOnly="True"
-                  CanUserSortColumns="False"
-                  MouseDoubleClick="AssumptionDataGrid_MouseDoubleClick"/>
+
+        <!-- TabControl -->
+        <TabControl Grid.Row="1" Margin="5">
+            <TabItem Header="Assumption">
+                <DataGrid x:Name="AssumptionDataGrid"
+                          AutoGenerateColumns="True" 
+                          IsReadOnly="True"
+                          CanUserSortColumns="False"
+                          MouseDoubleClick="AssumptionDataGrid_MouseDoubleClick"/>
+            </TabItem>
+            <TabItem Header="Expense">
+                <DataGrid x:Name="ExpenseDataGrid"
+                          AutoGenerateColumns="True" 
+                          IsReadOnly="True"
+                          CanUserSortColumns="False"
+                          MouseDoubleClick="ExpenseDataGrid_MouseDoubleClick"/>
+            </TabItem>
+        </TabControl>
 
         <!-- 로딩 오버레이 -->
         <Grid x:Name="LoadingOverlay" Grid.RowSpan="2" Background="#80000000" Visibility="Collapsed">

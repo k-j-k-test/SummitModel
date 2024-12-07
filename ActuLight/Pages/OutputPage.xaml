@@ -5,8 +5,8 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -14,7 +14,8 @@
             <Button x:Name="StartButton" Content="시작" Click="Start_Click" Margin="0,0,5,0"/>
             <Button x:Name="CancelButton" Content="취소" Click="Cancel_Click"/>
             <TextBlock Text="구분자" FontSize="13" VerticalAlignment="Center" Margin="30,0,0,0"/>
-            <ComboBox x:Name="DelimiterComboBox" SelectionChanged="DelimiterComboBox_SelectionChanged" Width="150" SelectedIndex="0" Margin="10,0,0,0">
+            <ComboBox x:Name="DelimiterComboBox" SelectionChanged="DelimiterComboBox_SelectionChanged" 
+              Width="150" SelectedIndex="0" Margin="10,0,0,0">
                 <ComboBoxItem Content="Tab"/>
                 <ComboBoxItem Content="Comma (,)"/>
                 <ComboBoxItem Content="Semicolon (;)"/>
@@ -24,22 +25,51 @@
             </ComboBox>
         </StackPanel>
 
-        <TabControl x:Name="OutputTabControl" Grid.Row="1">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="5">
+            <TextBlock Text="ProductCode:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBox x:Name="ProductCodeFilterBox" Width="100" TextChanged="FilterBox_TextChanged" Margin="0,0,10,0"/>
+            <TextBlock Text="RiderCode:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBox x:Name="RiderCodeFilterBox" Width="100" TextChanged="FilterBox_TextChanged"/>
+        </StackPanel>
+
+        <TabControl x:Name="OutputTabControl" Grid.Row="2" MinHeight="200">
             <!-- TabItems will be added dynamically -->
         </TabControl>
 
-        <StackPanel Grid.Row="2" Margin="10">
-            <TextBlock x:Name="TimeLabel" Text="경과 시간: "/>
-            <TextBlock x:Name="ProgressLabel" Text="진행 상황: "/>
-        </StackPanel>
+        <Grid Grid.Row="3" Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <RichTextBox x:Name="ProgressRichTextBox" Grid.Row="3" Margin="10" Height="250" VerticalScrollBarVisibility="Auto">
-            <RichTextBox.Resources>
-                <Style TargetType="{x:Type Paragraph}">
-                    <Setter Property="Margin" Value="0"/>
-                </Style>
-            </RichTextBox.Resources>
-        </RichTextBox>
+            <!-- 상태 표시 패널과 Clear 버튼을 같은 행에 배치 -->
+            <Grid Grid.Row="0" Margin="0,0,0,5">
+                <StackPanel HorizontalAlignment="Left">
+                    <TextBlock x:Name="TimeLabel" Text="경과 시간: "/>
+                    <TextBlock x:Name="ProgressLabel" Text="진행 상황: "/>
+                </StackPanel>
 
+                <Button x:Name="ClearButton" 
+                        Content="Clear" 
+                        Click="ClearButton_Click"
+                        HorizontalAlignment="Right" 
+                        VerticalAlignment="Top"
+                        Padding="10,3"/>
+            </Grid>
+
+            <!-- RichTextBox -->
+            <RichTextBox x:Name="ProgressRichTextBox" 
+                         Grid.Row="1"
+                         Height="200" 
+                         MinHeight="100"
+                         FontSize="11.5"
+                         VerticalScrollBarVisibility="Auto">
+                <RichTextBox.Resources>
+                    <Style TargetType="{x:Type Paragraph}">
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </RichTextBox.Resources>
+            </RichTextBox>
+        </Grid>
     </Grid>
 </Page>

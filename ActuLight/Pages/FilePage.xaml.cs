@@ -14,9 +14,6 @@ using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 using System.Windows.Documents;
 using Newtonsoft.Json;
-using Microsoft.CSharp;
-using System.CodeDom.Compiler;
-using Flee.PublicTypes;
 
 namespace ActuLight.Pages
 {
@@ -25,49 +22,126 @@ namespace ActuLight.Pages
         private string latestVersion;
         private string downloadUrl;
 
+        private FileSystemWatcher fileWatcher;
+        private readonly string[] monitoringFiles = { "mp.txt", "assum.txt", "exp.txt", "out.txt" };
+
         private const string RecentFilesPath = "recentFiles.json";
         private ObservableCollection<RecentFile> recentFiles = new ObservableCollection<RecentFile>();
         public string currentFilePath;
-        private DateTime currentFileLastWriteTime;
-        private DispatcherTimer fileCheckTimer;
         public Dictionary<string, List<List<object>>> excelData;
 
-        public static string SelectedFilePath { get; private set; }
-        public static bool IsAutoSync = false;
+        public static string SelectedFolderPath { get; private set; }
+        public static bool IsAutoSync = true;
 
         public FilePage()
         {
             InitializeComponent();
             LoadRecentFiles();
-            InitializeFileCheckTimer();
+            InitializeFileWatcher();
             RecentFilesList.ItemsSource = recentFiles;
             CheckForUpdates();
+        }
+
+        private void InitializeFileWatcher()
+        {
+            fileWatcher = new FileSystemWatcher();
+            fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
+            fileWatcher.Changed += OnFileChanged;
+            fileWatcher.EnableRaisingEvents = false; // 초기에는 비활성화
+        }
+
+        private async void NewProjectButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Title = "새 프로젝트 생성",
+                    Filter = "Project Directory|*.smt",
+                    DefaultExt = ".smt",
+                    FileName = "새 프로젝트"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    string projectName = Path.GetFileNameWithoutExtension(saveFileDialog.FileName);
+                    string parentPath = Path.GetDirectoryName(saveFileDialog.FileName);
+                    string projectPath = Path.Combine(parentPath, projectName);
+
+                    // Create project directory
+                    Directory.CreateDirectory(projectPath);
+
+                    // Create subdirectories
+                    string[] subDirectories = { "Inputs", "ExternalData", "Outputs", "Samples", "Scripts" };
+                    foreach (string dir in subDirectories)
+                    {
+                        Directory.CreateDirectory(Path.Combine(projectPath, dir));
+                    }
+
+                    // Copy default txt files from Resources to ExcelData folder
+                    string resourcePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources");
+                    string excelDataPath = Path.Combine(projectPath, "Inputs");
+
+                    foreach (string file in monitoringFiles)
+                    {
+                        string sourcePath = Path.Combine(resourcePath, file);
+                        string destPath = Path.Combine(excelDataPath, file);
+
+                        if (File.Exists(sourcePath))
+                        {
+                            File.Copy(sourcePath, destPath);
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Resources 폴더에서 {file} 파일을 찾을 수 없습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                    }
+
+                    // Create shortcut file (.smt)
+                    string executablePath = Process.GetCurrentProcess().MainModule.FileName;
+                    string shortcutPath = Path.Combine(projectPath, $"{projectName}.smt");
+
+                    using (StreamWriter writer = new StreamWriter(shortcutPath))
+                    {
+                        writer.WriteLine(executablePath);
+                    }
+
+                    // Copy Excel template
+                    string templatePath = Path.Combine(resourcePath, "ExcelData_Templete.xlsm");
+                    string destinationPath = Path.Combine(projectPath, $"{projectName}.xlsm");
+
+                    if (File.Exists(templatePath))
+                    {
+                        File.Copy(templatePath, destinationPath);
+                        MessageBox.Show("프로젝트가 성공적으로 생성되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                        // Load the newly created Excel file
+                        await LoadDataAsync(projectPath);
+                    }
+                    else
+                    {
+                        MessageBox.Show("Excel 템플릿 파일을 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"프로젝트 생성 중 오류가 발생했습니다: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private async void LoadButton_Click(object sender, RoutedEventArgs e)
         {
             OpenFileDialog openFileDialog = new OpenFileDialog
             {
-                Filter = "Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*"
+                Filter = "smt files (*.smt)|*.smt|All files (*.*)|*.*"
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
-                await LoadExcelFileAsync(openFileDialog.FileName);
+                string projectPath = Path.GetDirectoryName(openFileDialog.FileName);
+                await LoadDataAsync(projectPath);
             }
-            
-        }
-
-        private void InitializeFileCheckTimer()
-        {
-            fileCheckTimer = new DispatcherTimer();
-            fileCheckTimer.Tick += async (s, e) =>
-            {
-                await CheckForFileChangesAsync();
-                UpdateMemoryUsage();
-            };
-            fileCheckTimer.Interval = TimeSpan.FromSeconds(2);
-            fileCheckTimer.Start();
         }
 
         private async void OpenFileButton_Click(object sender, RoutedEventArgs e)
@@ -78,20 +152,20 @@ namespace ActuLight.Pages
             };
             if (openFileDialog.ShowDialog() == true)
             {
-                await LoadExcelFileAsync(openFileDialog.FileName);
+                await LoadDataAsync(openFileDialog.FileName);
             }
         }
 
         private async void OpenSelectedFileButton_Click(object sender, RoutedEventArgs e)
         {
-            if (RecentFilesList.SelectedItem is RecentFile selectedFile)
+            if (RecentFilesList.SelectedItem is RecentFile selectedFolder)
             {
                 try
                 {
                     LoadingOverlay.Visibility = Visibility.Visible;
 
-                    // FilePage의 LoadExcelFileAsync 메서드 호출
-                    await LoadExcelFileAsync(selectedFile.Path);
+                    // FilePage의 LoadDataAsync 메서드 호출
+                    await LoadDataAsync(selectedFolder.Path);
 
                     // MainWindow 인스턴스 가져오기
                     var mainWindow = Application.Current.MainWindow as MainWindow;
@@ -124,18 +198,6 @@ namespace ActuLight.Pages
                         await (mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
                     }
 
-                    // ExternalDataPage의 LoadDataAsync 메서드 호출
-                    string ExternalDataPageDir = "Pages/ExternalDataPage.xaml";
-                    if (mainWindow.pageCache.TryGetValue(ExternalDataPageDir, out Page externalDataPage))
-                    {
-                        await (externalDataPage as ExternalDataPage).LoadDataAsync();
-                    }
-                    else
-                    {
-                        mainWindow.pageCache[ExternalDataPageDir] = new ExternalDataPage();
-                        await (mainWindow.pageCache[ExternalDataPageDir] as ExternalDataPage).LoadDataAsync();
-                    }
-
                     // OutputPage의 LoadDataAsync 메서드 호출
                     string OutputPageDir = "Pages/OutputPage.xaml";
                     if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
@@ -146,6 +208,44 @@ namespace ActuLight.Pages
                     {
                         mainWindow.pageCache[OutputPageDir] = new OutputPage();
                         (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
+                    }
+
+                    // DataProcessingPage의 LoadDataAsync 메서드 호출
+                    string DataProcessingPageDir = "Pages/DataProcessingPage.xaml";
+                    if (mainWindow.pageCache.TryGetValue(DataProcessingPageDir, out Page dataProcessingPage))
+                    {
+                        (dataProcessingPage as DataProcessingPage).LoadExternalButton_Click(null, null);
+                    }
+                    else
+                    {
+                        mainWindow.pageCache[DataProcessingPageDir] = new DataProcessingPage();
+                        (mainWindow.pageCache[DataProcessingPageDir] as DataProcessingPage).LoadExternalButton_Click(null, null);
+                    }
+
+
+                    //SpreadSheetPage의 LoadDataAsync 메서드 호출
+                    string SpreadSheetPageDir = "Pages/SpreadSheetPage.xaml";
+                    if (!mainWindow.pageCache.TryGetValue(SpreadSheetPageDir, out Page spreadSheetPage))
+                    {
+                        mainWindow.pageCache[SpreadSheetPageDir] = new SpreadSheetPage();
+                        spreadSheetPage = mainWindow.pageCache[SpreadSheetPageDir];
+                    }
+
+                    string fileName = Path.GetFileNameWithoutExtension(selectedFolder.Path);
+                    string autoScriptPath = Path.Combine(selectedFolder.Path, "Scripts", $"{fileName}_scripts_auto1.json");
+
+                    if (!File.Exists(autoScriptPath))
+                    {
+                        string resourcePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "NewProject_scripts_auto1.json");
+                        if (File.Exists(resourcePath))
+                        {
+                            File.Copy(resourcePath, autoScriptPath);
+                        }
+                    }
+
+                    if (File.Exists(autoScriptPath))
+                    {
+                        await (spreadSheetPage as SpreadSheetPage).LoadDataAsync(autoScriptPath);
                     }
 
                     MessageBox.Show("모든 데이터가 성공적으로 로드되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -161,77 +261,6 @@ namespace ActuLight.Pages
             }
         }
 
-        private async Task LoadExcelFileAsync(string filePath)
-        {
-            LoadingOverlay.Visibility = Visibility.Visible;
-
-            try
-            {
-                UpdateStatusMessage("엑셀 파일 로딩 중...", true);
-
-                await Task.Run(() =>
-                {
-                    excelData = ExcelImporter.ImportMultipleSheets(filePath);
-                });
-
-                currentFilePath = filePath;
-                currentFileLastWriteTime = File.GetLastWriteTime(filePath);
-
-                // 기본 디렉토리 구조 생성
-                string excelName = Path.GetFileNameWithoutExtension(filePath);
-                string baseDirectory = Path.Combine(Path.GetDirectoryName(filePath), $"Data_{excelName}");
-
-                var directories = new[]
-                {
-                    baseDirectory,
-                    Path.Combine(baseDirectory, "Scripts"),
-                    Path.Combine(baseDirectory, "Samples"),
-                    Path.Combine(baseDirectory, "Outputs"),
-                    Path.Combine(baseDirectory, "ExternalData")
-                };
-
-                foreach (var directory in directories)
-                {
-                    if (!Directory.Exists(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-                }
-
-                UpdateStatusMessage($"엑셀 파일이 성공적으로 연결되었습니다. 파일 경로: {filePath}", true);
-                SelectedFilePath = filePath;
-
-                UpdateExcelSummary();
-
-                AddToRecentFiles(filePath);
-                UpdateApplicationTitle(filePath);
-            }
-            catch (Exception ex)
-            {
-                UpdateStatusMessage($"파일 로드 중 오류 발생: {ex.Message}", false);
-            }
-            finally
-            {
-                LoadingOverlay.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        private void UpdateApplicationTitle(string filePath)
-        {
-            string fileName = Path.GetFileNameWithoutExtension(filePath);
-            Application.Current.MainWindow.Title = $"ActuLight - {fileName}";
-        }
-
-        private void AutoSyncCheckBox_Checked(object sender, RoutedEventArgs e)
-        {
-            IsAutoSync = true;
-        }
-
-        private void AutoSyncCheckBox_Unchecked(object sender, RoutedEventArgs e)
-        {
-            IsAutoSync = false;
-        }
-
         private void DeleteSelectedFileButton_Click(object sender, RoutedEventArgs e)
         {
             if (RecentFilesList.SelectedItem is RecentFile selectedFile)
@@ -241,22 +270,209 @@ namespace ActuLight.Pages
             }
         }
 
-        private async Task CheckForFileChangesAsync()
+        private async Task LoadDataAsync(string projectPath)
         {
-            if (!string.IsNullOrEmpty(currentFilePath) && File.Exists(currentFilePath))
-            {
-                DateTime newLastWriteTime = File.GetLastWriteTime(currentFilePath);
-                if (newLastWriteTime != currentFileLastWriteTime)
-                {
-                    UpdateStatusMessage($"주의: 파일 {currentFilePath}의 내용이 변경되었습니다.", false);
-                    currentFileLastWriteTime = newLastWriteTime;
+            LoadingOverlay.Visibility = Visibility.Visible;
 
-                    if (IsAutoSync)
-                    {
-                        UpdateExcelData();
-                    }
+            try
+            {
+                UpdateStatusMessage("데이터 로딩 중...", true);
+
+                // FileWatcher 설정
+                if (fileWatcher != null)
+                {
+                    fileWatcher.Path = Path.Combine(projectPath, "Inputs");
+                    fileWatcher.EnableRaisingEvents = true;
                 }
+
+                string excelDataPath = Path.Combine(projectPath, "Inputs");
+                Dictionary<string, List<List<object>>> loadedData = new Dictionary<string, List<List<object>>>();
+
+                await Task.Run(() =>
+                {
+                    if (Directory.Exists(excelDataPath) && Directory.GetFiles(excelDataPath, "*.txt").Any())
+                    {
+                        foreach (string file in Directory.GetFiles(excelDataPath, "*.txt"))
+                        {
+                            string sheetName = Path.GetFileNameWithoutExtension(file);
+                            List<List<object>> sheetData = new List<List<object>>();
+
+                            string[] lines = File.ReadAllLines(file);
+                            foreach (string line in lines)
+                            {
+                                List<object> rowData = line.Split('\t')
+                                                         .Cast<object>()
+                                                         .ToList();
+                                sheetData.Add(rowData);
+                            }
+
+                            loadedData[sheetName] = sheetData;
+                        }
+                    }
+                });
+
+                excelData = loadedData;
+                currentFilePath = projectPath;
+                SelectedFolderPath = projectPath;
+
+                UpdateStatusMessage($"데이터가 성공적으로 로드되었습니다. 경로: {projectPath}", true);
+                UpdateDataSummary();
+                AddToRecentFiles(projectPath);
+                UpdateApplicationTitle(projectPath);
             }
+            catch (Exception ex)
+            {
+                UpdateStatusMessage($"데이터 로드 중 오류 발생: {ex.Message}", false);
+            }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private async void OnFileChanged(object sender, FileSystemEventArgs e)
+        {
+            if (!IsAutoSync) return;
+
+            // 모니터링 대상 파일인지 확인
+            string fileName = Path.GetFileName(e.Name);
+            if (!monitoringFiles.Contains(fileName)) return;
+
+            // 플래그 파일 경로
+            string flagFilePath = Path.Combine(Path.GetDirectoryName(e.FullPath), "flag.writing");
+
+            // 플래그 파일이 존재하면 쓰기가 진행 중이므로 대기
+            while (File.Exists(flagFilePath))
+            {
+                await Task.Delay(100);
+            }
+
+            await DebouncerAsync.Debounce(fileName, 500, async () =>
+            {
+                // UI 스레드에서 실행
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        await LoadDataAsync(currentFilePath);
+
+                        // MainWindow 인스턴스 가져오기
+                        var mainWindow = Application.Current.MainWindow as MainWindow;
+                        if (mainWindow == null)
+                        {
+                            throw new InvalidOperationException("MainWindow를 찾을 수 없습니다.");
+                        }
+
+                        // 변경된 파일에 따른 페이지 업데이트
+                        Dictionary<string, (string pageDir, Type pageType)> pageMapping = new Dictionary<string, (string, Type)>
+                        {
+                            { "mp.txt", ("Pages/ModelPointPage.xaml", typeof(ModelPointPage)) },
+                            { "assum.txt", ("Pages/AssumptionPage.xaml", typeof(AssumptionPage)) },
+                            { "exp.txt", ("Pages/AssumptionPage.xaml", typeof(AssumptionPage)) },
+                            { "out.txt", ("Pages/OutputPage.xaml", typeof(OutputPage)) }
+                       };
+
+                        // 해당 파일에 대한 페이지 매핑이 있는 경우 업데이트 실행
+                        if (pageMapping.TryGetValue(fileName, out var pageInfo))
+                        {
+                            if (mainWindow.pageCache.TryGetValue(pageInfo.pageDir, out Page page))
+                            {
+                                if (pageInfo.pageType == typeof(ModelPointPage))
+                                {
+                                    await (page as ModelPointPage).LoadDataAsync();
+                                }
+                                if (pageInfo.pageType == typeof(AssumptionPage) && fileName == "assum.txt")
+                                {
+                                    await (page as AssumptionPage).LoadAssumptionDataAsync();
+                                }
+                                if (pageInfo.pageType == typeof(AssumptionPage) && fileName == "exp.txt")
+                                {
+                                    await (page as AssumptionPage).LoadExpenseDataAsync();
+                                }
+                                if (pageInfo.pageType == typeof(OutputPage))
+                                {
+                                    (page as OutputPage).LoadData_Click(null, null);
+                                }
+                            }
+                        }
+
+                        // SpreadSheetPage는 항상 업데이트
+                        string SpreadsheetPageDir = "Pages/SpreadSheetPage.xaml";
+                        if (mainWindow.pageCache.TryGetValue(SpreadsheetPageDir, out Page spreadsheetPage))
+                        {
+                            (spreadsheetPage as SpreadSheetPage).UpdateInvokes();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"파일 변경 감지 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                });
+            });
+        }
+
+        private async void UpdateExcelData()
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
+
+            // FilePage의 LoadDataAsync 메서드 호출
+            await LoadDataAsync(currentFilePath);
+
+            // MainWindow 인스턴스 가져오기
+            var mainWindow = Application.Current.MainWindow as MainWindow;
+            if (mainWindow == null)
+            {
+                throw new InvalidOperationException("MainWindow를 찾을 수 없습니다.");
+            }
+
+            // ModelPointPage의 LoadDataAsync 메서드 호출
+            string ModelPointPageDir = "Pages/ModelPointPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(ModelPointPageDir, out Page modelPointPage))
+            {
+                await(modelPointPage as ModelPointPage).LoadDataAsync();
+            }
+            else
+            {
+                mainWindow.pageCache[ModelPointPageDir] = new ModelPointPage();
+                await(mainWindow.pageCache[ModelPointPageDir] as ModelPointPage).LoadDataAsync();
+            }
+
+            // AssumptionPage의 LoadDataAsync 메서드 호출
+            string AssumptionPageDir = "Pages/AssumptionPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(AssumptionPageDir, out Page assumptionPage))
+            {
+                await(assumptionPage as AssumptionPage).LoadDataAsync();
+            }
+            else
+            {
+                mainWindow.pageCache[AssumptionPageDir] = new AssumptionPage();
+                await(mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
+            }
+
+            // OutputPage의 LoadDataAsync 메서드 호출
+            string OutputPageDir = "Pages/OutputPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
+            {
+                (outputPage as OutputPage).LoadData_Click(null, null);
+            }
+            else
+            {
+                mainWindow.pageCache[OutputPageDir] = new OutputPage();
+                (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
+            }
+
+            // SpreadSheetPage의 LoadDataAsync 메서드 호출
+            string SpreadsheetPageDir = "Pages/SpreadSheetPage.xaml";
+            if (mainWindow.pageCache.TryGetValue(SpreadsheetPageDir, out Page spreadsheetPage))
+            {
+                (spreadsheetPage as SpreadSheetPage).UpdateInvokes();
+            }
+        }
+
+        private void UpdateApplicationTitle(string filePath)
+        {
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+            Application.Current.MainWindow.Title = $"ActuLight - {fileName}";
         }
 
         private void AddToRecentFiles(string filePath)
@@ -302,76 +518,6 @@ namespace ActuLight.Pages
             }
         }
 
-        private async void UpdateExcelData()
-        {
-            LoadingOverlay.Visibility = Visibility.Visible;
-
-            // FilePage의 LoadExcelFileAsync 메서드 호출
-            await LoadExcelFileAsync(currentFilePath);
-
-            // MainWindow 인스턴스 가져오기
-            var mainWindow = Application.Current.MainWindow as MainWindow;
-            if (mainWindow == null)
-            {
-                throw new InvalidOperationException("MainWindow를 찾을 수 없습니다.");
-            }
-
-            // ModelPointPage의 LoadDataAsync 메서드 호출
-            string ModelPointPageDir = "Pages/ModelPointPage.xaml";
-            if (mainWindow.pageCache.TryGetValue(ModelPointPageDir, out Page modelPointPage))
-            {
-                await(modelPointPage as ModelPointPage).LoadDataAsync();
-            }
-            else
-            {
-                mainWindow.pageCache[ModelPointPageDir] = new ModelPointPage();
-                await(mainWindow.pageCache[ModelPointPageDir] as ModelPointPage).LoadDataAsync();
-            }
-
-            // AssumptionPage의 LoadDataAsync 메서드 호출
-            string AssumptionPageDir = "Pages/AssumptionPage.xaml";
-            if (mainWindow.pageCache.TryGetValue(AssumptionPageDir, out Page assumptionPage))
-            {
-                await(assumptionPage as AssumptionPage).LoadDataAsync();
-            }
-            else
-            {
-                mainWindow.pageCache[AssumptionPageDir] = new AssumptionPage();
-                await(mainWindow.pageCache[AssumptionPageDir] as AssumptionPage).LoadDataAsync();
-            }
-
-            // ExternalDataPage의 LoadDataAsync 메서드 호출
-            string ExternalDataPageDir = "Pages/ExternalDataPage.xaml";
-            if (mainWindow.pageCache.TryGetValue(ExternalDataPageDir, out Page externalDataPage))
-            {
-                await (externalDataPage as ExternalDataPage).LoadDataAsync();
-            }
-            else
-            {
-                mainWindow.pageCache[ExternalDataPageDir] = new ExternalDataPage();
-                await (mainWindow.pageCache[ExternalDataPageDir] as ExternalDataPage).LoadDataAsync();
-            }
-
-            // OutputPage의 LoadDataAsync 메서드 호출
-            string OutputPageDir = "Pages/OutputPage.xaml";
-            if (mainWindow.pageCache.TryGetValue(OutputPageDir, out Page outputPage))
-            {
-                (outputPage as OutputPage).LoadData_Click(null, null);
-            }
-            else
-            {
-                mainWindow.pageCache[OutputPageDir] = new OutputPage();
-                (mainWindow.pageCache[OutputPageDir] as OutputPage).LoadData_Click(null, null);
-            }
-
-            // SpreadSheetPage의 LoadDataAsync 메서드 호출
-            string SpreadsheetPageDir = "Pages/SpreadsheetPage.xaml";
-            if (mainWindow.pageCache.TryGetValue(SpreadsheetPageDir, out Page spreadsheetPage))
-            {
-                (spreadsheetPage as SpreadSheetPage).UpdateInvokes();
-            }         
-        }
-
         private void UpdateStatusMessage(string message, bool isSuccess)
         {
             Dispatcher.Invoke(() =>
@@ -388,7 +534,7 @@ namespace ActuLight.Pages
             });
         }
 
-        private void UpdateExcelSummary()
+        private void UpdateDataSummary()
         {
             if (excelData != null)
             {
@@ -400,7 +546,7 @@ namespace ActuLight.Pages
                 {
                     int rowCount = sheet.Value.Count;
 
-                    if(sheet.Value.Any())
+                    if (sheet.Value.Any())
                     {
                         int columnCount = sheet.Value[0].Count;
 
@@ -409,28 +555,28 @@ namespace ActuLight.Pages
                         if (rowCount >= 100000 || columnCount >= 5000)
                         {
                             needsOptimization = true;
-                            warningBuilder.AppendLine($"경고: {sheet.Key} 시트의 크기가 매우 큽니다. 최적화가 필요할 수 있습니다.");
+                            warningBuilder.AppendLine($"경고: {sheet.Key}의 데이터 크기가 매우 큽니다. 최적화가 필요할 수 있습니다.");
                         }
                     }
                 }
 
                 if (needsOptimization)
                 {
-                    warningBuilder.AppendLine("\n주의: 일부 시트의 크기가 매우 큽니다. 애플리케이션의 성능 최적화가 필요할 수 있습니다.");
+                    warningBuilder.AppendLine("\n주의: 일부 데이터의 크기가 매우 큽니다. 애플리케이션의 성능 최적화가 필요할 수 있습니다.");
                 }
 
-                ExcelSummary.Inlines.Clear();
-                ExcelSummary.Inlines.Add(new Run("Excel 데이터 요약:\n" + summaryBuilder.ToString()));
+                DataSummary.Inlines.Clear();
+                DataSummary.Inlines.Add(new Run("데이터 요약:\n" + summaryBuilder.ToString()));
 
                 if (warningBuilder.Length > 0)
                 {
-                    ExcelSummary.Inlines.Add(new Run(warningBuilder.ToString()) { Foreground = Brushes.Red });
+                    DataSummary.Inlines.Add(new Run(warningBuilder.ToString()) { Foreground = Brushes.Red });
                 }
             }
             else
             {
-                ExcelSummary.Inlines.Clear();
-                ExcelSummary.Inlines.Add(new Run("Excel 데이터가 로드되지 않았습니다."));
+                DataSummary.Inlines.Clear();
+                DataSummary.Inlines.Add(new Run("데이터가 로드되지 않았습니다."));
             }
         }
 
@@ -498,6 +644,4 @@ namespace ActuLight.Pages
 
         public RecentFile() { } // JSON 역직렬화용 생성자
     }
-
-
 }

@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.IO;
+using System.Linq;
 
 namespace ActuLight.Pages
 {
@@ -18,14 +19,17 @@ namespace ActuLight.Pages
         private DateTime _startTime;
         private string _outputFolderPath;
         private string _selectedDelimiter = "\t";
-        private bool _initAutoSync;
+        private Dictionary<string, DataGrid> tableGrids;
+        private Dictionary<string, List<Input_output>> tableNameData;
+        private bool isSearching = false;
 
         public OutputPage()
         {
             InitializeComponent();
-
             StartButton.IsEnabled = false;
             CancelButton.IsEnabled = false;
+            tableGrids = new Dictionary<string, DataGrid>();
+            tableNameData = new Dictionary<string, List<Input_output>>();
         }
 
         public void LoadData_Click(object sender, RoutedEventArgs e)
@@ -38,67 +42,116 @@ namespace ActuLight.Pages
                     throw new Exception("출력 데이터를 찾을 수 없습니다.");
                 }
 
-                string excelName = Path.GetFileNameWithoutExtension(FilePage.SelectedFilePath);
-                _outputFolderPath = Path.Combine(Path.GetDirectoryName(FilePage.SelectedFilePath), @$"Data_{excelName}\Outputs");
+                string fileName = Path.GetFileNameWithoutExtension(FilePage.SelectedFolderPath);
+                _outputFolderPath = Path.Combine(FilePage.SelectedFolderPath, "Outputs");
                 if (!Directory.Exists(_outputFolderPath))
                 {
                     Directory.CreateDirectory(_outputFolderPath);
                 }
 
-                _modelWriter = new ModelWriter(App.ModelEngine, new DataExpander(App.ModelEngine.ModelPointInfo.Types, App.ModelEngine.ModelPointInfo.Headers));
-                _modelWriter.LoadTableData(filePage.excelData["out"]);
-                PopulateTabControl();
+                App.ModelEngine.SetOutputs(filePage.excelData["out"]);
+                _modelWriter = new ModelWriter(App.ModelEngine,
+                    new DataExpander(App.ModelEngine.ModelPointInfo.Types, App.ModelEngine.ModelPointInfo.Headers));
+
+                ClassifyAndCreateTabs();
 
                 StartButton.IsEnabled = true;
                 CancelButton.IsEnabled = true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"out 데이터 로드 중 오류가 발생했습니다. 수식을 다시 한 번 확인바랍니다.: \n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"out 데이터 로드 중 오류가 발생했습니다. 수식을 다시 한 번 확인바랍니다.: \n{ex.Message}",
+                    "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void PopulateTabControl()
+        private void ClassifyAndCreateTabs()
         {
             OutputTabControl.Items.Clear();
+            tableGrids.Clear();
+            tableNameData.Clear();
 
-            foreach (var tableEntry in _modelWriter.CompiledExpressions)
+            // 테이블 타입별로 데이터 그룹화
+            var groupedData = App.ModelEngine.Outputs
+                .SelectMany(kv => kv.Value)
+                .GroupBy(output => output.Table)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToList()
+                );
+
+            // 그룹화된 데이터로 탭 생성
+            foreach (var group in groupedData)
             {
-                var tabItem = new TabItem { Header = tableEntry.Key };
-                var dataGrid = new DataGrid
+                var tableName = group.Key;
+                var dataGrid = CreateDataGrid();
+                tableGrids[tableName] = dataGrid;
+                tableNameData[tableName] = group.Value;
+
+                var tabItem = new TabItem
                 {
-                    AutoGenerateColumns = false,
-                    IsReadOnly = true,
-                    CanUserSortColumns = false
+                    Header = tableName,
+                    Content = dataGrid
                 };
-
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "ColumnName", Binding = new System.Windows.Data.Binding("ColumnName") });
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value") });
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "RangeStart", Binding = new System.Windows.Data.Binding("RangeStart") });
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "RangeEnd", Binding = new System.Windows.Data.Binding("RangeEnd") });
-                dataGrid.Columns.Add(new DataGridTextColumn { Header = "Format", Binding = new System.Windows.Data.Binding("Format") });
-
-                var items = new List<OutTableColumnInfo>();
-
-                foreach (var columnEntry in tableEntry.Value)
-                {
-                    var columnInfo = new OutTableColumnInfo
-                    {
-                        ColumnName = columnEntry.Key,
-                        Value = columnEntry.Value.Expression.Text,
-                        RangeStart = columnEntry.Value.StartExpression?.Text ?? "",
-                        RangeEnd = columnEntry.Value.EndExpression?.Text ?? "",
-                        Format = columnEntry.Value.Format,
-                    };
-                    items.Add(columnInfo);
-                }
-                dataGrid.ItemsSource = items;
-
-                tabItem.Content = dataGrid;
                 OutputTabControl.Items.Add(tabItem);
+
+                UpdateDataGrid(dataGrid, group.Value);
             }
 
-            OutputTabControl.SelectedIndex = 0;
+            if (OutputTabControl.Items.Count > 0)
+            {
+                OutputTabControl.SelectedIndex = 0;
+            }
+        }
+
+        private DataGrid CreateDataGrid()
+        {
+            var dataGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true,
+                CanUserSortColumns = false
+            };
+
+            // Add columns
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "Table", Binding = new System.Windows.Data.Binding(nameof(Input_output.Table)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "ProductCode", Binding = new System.Windows.Data.Binding(nameof(Input_output.ProductCode)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "RiderCode", Binding = new System.Windows.Data.Binding(nameof(Input_output.RiderCode)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "Value", Binding = new System.Windows.Data.Binding(nameof(Input_output.Value)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "Position", Binding = new System.Windows.Data.Binding(nameof(Input_output.Position)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "Range", Binding = new System.Windows.Data.Binding(nameof(Input_output.Range)) });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            { Header = "Format", Binding = new System.Windows.Data.Binding(nameof(Input_output.Format)) });
+
+            return dataGrid;
+        }
+
+        private void UpdateDataGrid(DataGrid dataGrid, List<Input_output> data)
+        {
+            try
+            {
+                dataGrid.ItemsSource = data;
+                AutoFitColumns(dataGrid);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"데이터 그리드 업데이트 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void AutoFitColumns(DataGrid dataGrid)
+        {
+            foreach (var column in dataGrid.Columns)
+            {
+                column.Width = new DataGridLength(1, DataGridLengthUnitType.Auto);
+            }
+            dataGrid.UpdateLayout();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
@@ -107,27 +160,52 @@ namespace ActuLight.Pages
             {
                 _modelWriter.IsCanceled = false;
                 _modelWriter.Delimiter = _selectedDelimiter;
-                _initAutoSync = FilePage.IsAutoSync;
-
+                _modelWriter.StatusQueue = new Queue<string>();
                 _startTime = DateTime.Now;
                 _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
                 _timer.Tick += Timer_Tick;
-                
                 _timer.Start();
-
                 EnableButtons(false);
-
                 ProgressRichTextBox.AppendText($"■ 시작 {DateTime.Now} " + "\r\n");
-                await Task.Run(() => WriteResults());
-                ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {(DateTime.Now - _startTime).ToString(@"hh\:mm\:ss")} " + "\r\n" + "\r\n");
+
+                var selectedTab = OutputTabControl.SelectedItem as TabItem;
+                if (selectedTab != null)
+                {
+                    var table = selectedTab.Header.ToString();
+                    var productCode = ProductCodeFilterBox.Text.Trim();
+                    var riderCode = RiderCodeFilterBox.Text.Trim();
+                    await Task.Run(() => _modelWriter.WriteResultsAsync(_outputFolderPath, productCode, riderCode));
+                }
+
+                _timer.Stop();
+
+                // 남은 StatusQueue 메시지 모두 출력
+                while (_modelWriter.StatusQueue.Count > 0)
+                {
+                    ProgressRichTextBox.AppendText("- " + _modelWriter.StatusQueue.Dequeue() + "\r\n");
+                }
+
+                // 종료 메시지 출력
+                var elapsed = DateTime.Now - _startTime;
+                ProgressRichTextBox.AppendText($"□ 종료 {DateTime.Now}, 걸린 시간: {elapsed:hh\\:mm\\:ss} " + "\r\n" + "\r\n");
+                ProgressRichTextBox.ScrollToEnd();
+
+                // 라벨 초기화
+                TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss\\.ff}";
+                ProgressLabel.Text = "작업이 완료되었습니다.";
 
                 EnableButtons(true);
-
-                //변수 초기화
-                App.ModelEngine.SetModelPoint();
+                App.ModelEngine.SetModelPoint(); //변수 초기화
             }
             catch (Exception ex)
             {
+                if (_timer != null)
+                {
+                    _timer.Stop();
+                    // 예외 발생 시에도 라벨 초기화
+                    TimeLabel.Text = "경과 시간: ";
+                    ProgressLabel.Text = "";
+                }
                 MessageBox.Show("오류가 발생했습니다. 출력 데이터가 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -135,23 +213,13 @@ namespace ActuLight.Pages
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
             _modelWriter.IsCanceled = true;
+            if (_timer != null)
+                _timer.Stop();
         }
 
-        private void WriteResults()
+        private void ClearButton_Click(object sender, RoutedEventArgs e)
         {
-            _modelWriter.StatusQueue = new Queue<string>();
-
-            foreach (var tableName in _modelWriter.CompiledExpressions.Keys)
-            {
-                if (_modelWriter.IsCanceled) break;
-                _modelWriter.WriteResults(_outputFolderPath, tableName);
-            }
-
-            Dispatcher.Invoke(() =>
-            {
-                _timer.Stop();
-                UpdateProgressRichTextBox();
-            });
+            ProgressRichTextBox.Document.Blocks.Clear();
         }
 
         private void Timer_Tick(object sender, EventArgs e)
@@ -159,24 +227,15 @@ namespace ActuLight.Pages
             TimeSpan elapsed = DateTime.Now - _startTime;
             Dispatcher.Invoke(() =>
             {
-                TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss\\.ff}";
+                TimeLabel.Text = $"경과 시간: {elapsed:hh\\:mm\\:ss}";
                 ProgressLabel.Text = _modelWriter.StatusMessage;
 
                 if(_modelWriter.StatusQueue.Count > 0 )
                 {
                     ProgressRichTextBox.AppendText("- " + _modelWriter.StatusQueue.Dequeue() + "\r\n");
+                    ProgressRichTextBox.ScrollToEnd();
                 }
             });
-        }
-
-        private void UpdateProgressRichTextBox()
-        {
-            ProgressLabel.Text = _modelWriter.StatusMessage;
-            while (_modelWriter.StatusQueue.Count > 0)
-            {
-                ProgressRichTextBox.AppendText("- " + _modelWriter.StatusQueue.Dequeue() + "\r\n");
-            }
-            ProgressRichTextBox.ScrollToEnd();
         }
 
         private void DelimiterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -219,16 +278,68 @@ namespace ActuLight.Pages
             DelimiterComboBox.IsEnabled = enabled;
 
             //자동저장기능 중지
-            FilePage.IsAutoSync = enabled ? _initAutoSync : enabled;       
+            FilePage.IsAutoSync = enabled;  
+        }
+
+        private async void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isSearching) return;
+            isSearching = true;
+
+            await Task.Delay(300);
+
+            var productCode = ProductCodeFilterBox.Text.Trim();
+            var riderCode = RiderCodeFilterBox.Text.Trim();
+
+            ApplyFilter(productCode, riderCode);
+
+            isSearching = false;
+        }
+
+        private void ApplyFilter(string productCode, string riderCode)
+        {
+            if (OutputTabControl.SelectedItem is not TabItem selectedTab) return;
+
+            var currentTable = selectedTab.Header.ToString();
+            var dataGrid = tableGrids[currentTable];
+
+            if (!tableNameData.TryGetValue(currentTable, out var currentTableData))
+                return;
+
+            var filteredData = currentTableData;
+
+
+            if (!string.IsNullOrEmpty(productCode) || !string.IsNullOrEmpty(riderCode))
+            {
+                filteredData = currentTableData
+                    .Where(item =>
+                        (string.IsNullOrEmpty(productCode) ||
+                         item.ProductCode.Contains(productCode) ||
+                         item.ProductCode == "Base") &&
+                        (string.IsNullOrEmpty(riderCode) ||
+                         item.RiderCode.Contains(riderCode) ||
+                         string.IsNullOrEmpty(item.RiderCode))
+                    )
+                    .ToList();
+            }
+
+            dataGrid.ItemsSource = filteredData;
         }
     }
 
-    public class OutTableColumnInfo
+    public class OutTableColumnInfo : IComparable<OutTableColumnInfo>
     {
-        public string ColumnName { get; set; }
+        public string Table { get; set; }
+        public string ProductCode { get; set; }
+        public string RiderCode { get; set; }
         public string Value { get; set; }
-        public string RangeStart { get; set; }
-        public string RangeEnd { get; set; }
+        public int Position { get; set; }
+        public string Range { get; set; }
         public string Format { get; set; }
+
+        public int CompareTo(OutTableColumnInfo other)
+        {
+            return Position.CompareTo(other.Position);
+        }
     }
 }

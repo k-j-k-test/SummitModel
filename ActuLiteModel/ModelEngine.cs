@@ -10,6 +10,9 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Drawing;
 using System.Diagnostics;
+using Microsoft.SqlServer.Server;
+using System.Runtime.Remoting.Contexts;
+using System.Web.UI.WebControls;
 
 namespace ActuLiteModel
 {
@@ -17,15 +20,19 @@ namespace ActuLiteModel
     {
         public ExpressionContext Context { get; private set; }
 
-        public Dictionary<string, List<Input_assum>> Assumptions { get; private set; }
-
-        public Dictionary<string, IGenericExpression<bool>> Conditions { get; private set; }
-
         public Dictionary<string, Model> Models { get; private set; }
+        public Dictionary<string, List<List<object>>> ModelPoints { get; private set; } //Key: {Table}|{ProductCode}|{RiderCode}
+        public Dictionary<string, List<Input_assum>> Assumptions { get; private set; }  //Key: {Key1}|{Key2}|{Key3}
+        public Dictionary<string, List<Input_exp>> Expenses { get; private set; }   //Key: {ProductCode}|{RiderCode}
+        public Dictionary<string, List<Input_output>> Outputs { get; private set; } //Key: {Table}|{ProductCode}|{RiderCode}
+
+        public Dictionary<string, IGenericExpression<bool>> BoolExpressions { get; private set; }
+        public Dictionary<string, IGenericExpression<double>> DoubleExpressions { get; private set; }
+        public Dictionary<string, IGenericExpression<int>> IntExpressions { get; private set; }
+        public Dictionary<string, IGenericExpression<string>> StringExpressions { get; private set; }
+        public Dictionary<string, IDynamicExpression> DynamicExpressions { get; private set; }
 
         public (List<string> Types, List<string> Headers) ModelPointInfo { get; private set; }
-
-        public List<List<object>> ModelPoints { get; private set; }
 
         public List<object> SelectedPoint { get;  set; }
 
@@ -34,9 +41,17 @@ namespace ActuLiteModel
             Context = new ExpressionContext();
             Context.Imports.AddType(typeof(FleeFunc));
             Assumptions = new Dictionary<string, List<Input_assum>>();
-            Conditions = new Dictionary<string, IGenericExpression<bool>>();
+            Expenses = new Dictionary<string, List<Input_exp>>();
+            Outputs = new Dictionary<string, List<Input_output>>();
+            BoolExpressions = new Dictionary<string, IGenericExpression<bool>>();
+            DoubleExpressions = new Dictionary<string, IGenericExpression<double>>();
+            IntExpressions = new Dictionary<string, IGenericExpression<int>>();
+            StringExpressions = new Dictionary<string, IGenericExpression<string>>();
+            DynamicExpressions = new Dictionary<string, IDynamicExpression>();
             Models = new Dictionary<string, Model>();
-            ModelPoints = new List<List<object>>();
+            ModelPoints = new Dictionary<string, List<List<object>>>();
+            SampleExporter.SetEngine(this);
+            FleeFunc.Engine = this;
             FleeFunc.ModelDict = Models;
         }
 
@@ -65,7 +80,6 @@ namespace ActuLiteModel
         public void SetAssumption(List<Input_assum> assumptions)
         {
             Assumptions.Clear();
-            Conditions.Clear();
 
             var uniqueConditions = new HashSet<string>();
 
@@ -89,7 +103,63 @@ namespace ActuLiteModel
 
             foreach (var condition in uniqueConditions)
             {
-                Conditions[condition] = Context.CompileGeneric<bool>(condition);
+                BoolExpressions[condition] = CompileBool(condition);
+            }
+        }
+
+        public void SetExpense(List<Input_exp> expenses)
+        {
+            Expenses.Clear();
+
+            // Condition과 Value 컴파일을 위한 HashSet
+            var uniqueConditions = new HashSet<string>();
+            var uniqueValues = new HashSet<string>();
+
+            // 모든 expense 항목들을 순회하면서 조건과 수식들을 수집
+            foreach (var expense in expenses)
+            {
+                // 조건이 있는 경우 HashSet에 추가
+                if (!string.IsNullOrWhiteSpace(expense.Condition))
+                {
+                    uniqueConditions.Add(expense.Condition);
+                }
+
+                // 모든 수식 필드를 검사하여 uniqueValues에 추가
+                var properties = typeof(Input_exp).GetProperties()
+                    .Where(p => p.Name.StartsWith("Alpha") ||
+                               p.Name.StartsWith("Beta") ||
+                               p.Name.StartsWith("Gamma") ||
+                               p.Name.StartsWith("Refund") ||
+                               p.Name.StartsWith("Etc"));
+
+                foreach (var prop in properties)
+                {
+                    string value = prop.GetValue(expense) as string;
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        uniqueValues.Add(value);
+                    }
+                }
+
+                // Expenses 딕셔너리에 expense 추가
+                string key = expense.ProductCode + "|" + expense.RiderCode;
+                if (!Expenses.ContainsKey(key))
+                {
+                    Expenses[key] = new List<Input_exp>();
+                }
+                Expenses[key].Add(expense);
+            }
+
+            // 조건 컴파일
+            foreach (var condition in uniqueConditions)
+            {
+                BoolExpressions[condition] = CompileBool(condition);
+            }
+
+            // 수식 컴파일
+            foreach (var value in uniqueValues)
+            {
+                DoubleExpressions[value] = CompileDouble(value);
             }
         }
 
@@ -110,8 +180,96 @@ namespace ActuLiteModel
 
         public void SetModelPoints(List<List<object>> modelPoints, List<string> types, List<string> headers)
         {
-            ModelPoints = modelPoints;
+            ModelPoints.Clear();
             ModelPointInfo = (types, headers);
+
+            // 필요한 컬럼들의 인덱스 찾기
+            int tableIndex = headers.IndexOf("Table");
+            int productCodeIndex = headers.IndexOf("ProductCode");
+            int riderCodeIndex = headers.IndexOf("RiderCode");
+
+            if (tableIndex == -1)
+                throw new Exception("Table column not found in headers");
+            if (productCodeIndex == -1)
+                throw new Exception("ProductCode column not found in headers");
+            if (riderCodeIndex == -1)
+                throw new Exception("RiderCode column not found in headers");
+
+            // 각 데이터를 복합 키로 분류
+            foreach (var point in modelPoints)
+            {
+                if (point[tableIndex] == null) continue;
+
+                string[] tableTypes = point[tableIndex].ToString().Split(',');
+
+                foreach (var tableType in tableTypes.Select(t => t.Trim()))
+                {
+                    // 복합 키 생성 (Table|ProductCode|RiderCode)
+                    string productCode = point[productCodeIndex]?.ToString() ?? "";
+                    string riderCode = point[riderCodeIndex]?.ToString() ?? "";
+                    string compositeKey = $"{tableType}|{productCode}|{riderCode}";
+
+                    if (!ModelPoints.ContainsKey(compositeKey))
+                    {
+                        ModelPoints[compositeKey] = new List<List<object>>();
+                    }
+
+                    // 새로운 데이터 리스트 생성 및 Table 값을 현재 tableType으로 설정
+                    var modifiedPoint = new List<object>(point);
+                    modifiedPoint[tableIndex] = tableType; // Table 값을 단일 값으로 변경
+                    ModelPoints[compositeKey].Add(modifiedPoint);
+                }
+            }
+        }
+
+        public void SetOutputs(List<List<object>> outputs)
+        {
+            Outputs.Clear();
+
+            var outputData = outputs.Skip(1).ToList();
+
+            foreach (var row in outputData)
+            {
+                var output = new Input_output
+                {
+                    Table = row[0]?.ToString(),
+                    ProductCode = row[1]?.ToString(),
+                    RiderCode = row[2]?.ToString(),
+                    Value = row[3]?.ToString(),
+                    Position = row[4]?.ToString(),
+                    Range = row[5]?.ToString(),
+                    Format = row[6]?.ToString()
+                };
+
+                string key = $"{output.Table}|{output.ProductCode}|{output.RiderCode}";
+
+                if (!string.IsNullOrEmpty(output.Table))
+                {
+                    if (!Outputs.ContainsKey(key))
+                    {
+                        Outputs[key] = new List<Input_output>();
+                    }
+
+                    // Value 식이 비어있지 않은 경우만 추가
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        Outputs[key].Add(output);
+                    }
+                }
+            }
+
+            // Position 기준으로 정렬
+            foreach (var outputval in Outputs.Values)
+            {
+                outputval.Sort((a, b) =>
+                {
+                    if (int.TryParse(a.Position, out int posA) && int.TryParse(b.Position, out int posB))
+                    {
+                        return posA.CompareTo(posB);
+                    }
+                    return string.Compare(a.Position, b.Position);
+                });
+            }
         }
 
         public List<double> GetAssumptionRate(params string[] keys)
@@ -123,7 +281,7 @@ namespace ActuLiteModel
                 foreach (var assumption in assumptionsForKey)
                 {
                     if (string.IsNullOrWhiteSpace(assumption.Condition) ||
-                        (Conditions.TryGetValue(assumption.Condition, out var compiledExpression) && compiledExpression.Evaluate()))
+                        (BoolExpressions.TryGetValue(assumption.Condition, out var compiledExpression) && compiledExpression.Evaluate()))
                     {
                         return assumption.Rates;
                     }
@@ -133,6 +291,193 @@ namespace ActuLiteModel
             throw new Exception($"No matching assumption keys [{string.Join(",", keys)}] found");
         }
 
+        public double GetExpense(string expenseType)
+        {
+            var productCode = Context.Variables["ProductCode"].ToString();
+            var riderCode = Context.Variables["RiderCode"].ToString();
+            return GetExpense(productCode, riderCode, expenseType);
+        }
+
+        public double GetExpense(string productCode, string riderCode, string expenseType)
+        {
+            var lookupKey = string.Join("|", new[] { productCode, riderCode }.Where(key => !string.IsNullOrWhiteSpace(key)));
+
+            List<Input_exp> expensesForKey;
+            if (!Expenses.TryGetValue(lookupKey, out expensesForKey))
+            {
+                throw new Exception(string.Format("No matching expense found for product [{0}], rider [{1}], type [{2}]",
+                    productCode, riderCode, expenseType));
+            }
+
+            foreach (var expense in expensesForKey)
+            {
+                IGenericExpression<bool> compiledExpression;
+                if (string.IsNullOrWhiteSpace(expense.Condition) ||
+                    (BoolExpressions.TryGetValue(expense.Condition, out compiledExpression) && compiledExpression.Evaluate()))
+                {
+                    var formula = GetExpenseFormula(expense, expenseType);
+                    if (string.IsNullOrWhiteSpace(formula))
+                    {
+                        return 0;
+                    }
+
+                    IGenericExpression<double> compiledFormula;
+                    if (DoubleExpressions.TryGetValue(formula, out compiledFormula))
+                    {
+                        return compiledFormula.Evaluate();
+                    }
+                    return 0;
+                }
+            }
+
+            throw new Exception(string.Format("No matching expense found for product [{0}], rider [{1}], type [{2}]",
+                productCode, riderCode, expenseType));
+        }
+
+        private string GetExpenseFormula(Input_exp expense, string expenseType)
+        {
+            switch (expenseType)
+            {
+                case "Alpha_P": return expense.Alpha_P;
+                case "Alpha_P2": return expense.Alpha_P;
+                case "Alpha_S": return expense.Alpha_S;
+                case "Alpha_P20": return expense.Alpha_P20;
+                case "Beta_P": return expense.Beta_P;
+                case "Beta_S": return expense.Beta_S;
+                case "Beta_Fix": return expense.Beta_Fix;
+                case "BetaPrime_P": return expense.BetaPrime_P;
+                case "BetaPrime_S": return expense.BetaPrime_S;
+                case "BetaPrime_Fix": return expense.BetaPrime_Fix;
+                case "Gamma": return expense.Gamma;
+                case "Refund_P": return expense.Refund_P;
+                case "Refund_S": return expense.Refund_S;
+                case "Etc1": return expense.Etc1;
+                case "Etc2": return expense.Etc2;
+                case "Etc3": return expense.Etc3;
+                case "Etc4": return expense.Etc4;
+                default:
+                    throw new ArgumentException(string.Format("Unknown expense type: {0}", expenseType));
+            }
+        }
+
+        public IGenericExpression<bool> CompileBool(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return Context.CompileGeneric<bool>("true");
+            }
+
+            if (!BoolExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                try
+                {
+                    compiledExpression = Context.CompileGeneric<bool>(expression);
+                    BoolExpressions[expression] = compiledExpression;
+                }
+                catch
+                {
+                    throw new Exception($"Failed to compile boolean expression: [{expression}]");
+                }
+            }
+
+            return compiledExpression;
+        }
+
+        public IGenericExpression<double> CompileDouble(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return Context.CompileGeneric<double>("0");
+            }
+
+            if (!DoubleExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                try
+                {
+                    compiledExpression = Context.CompileGeneric<double>(expression);
+                    DoubleExpressions[expression] = compiledExpression;
+                }
+                catch
+                {
+                    throw new Exception($"Failed to compile double expression: [{expression}]");
+                }
+            }
+
+            return compiledExpression;
+        }
+
+        public IGenericExpression<int> CompileInt(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return Context.CompileGeneric<int>("0");
+            }
+
+            if (!IntExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                try
+                {
+                    compiledExpression = Context.CompileGeneric<int>(expression);
+                    IntExpressions[expression] = compiledExpression;
+                }
+                catch
+                {
+                    throw new Exception($"Failed to compile integer expression: [{expression}]");
+                }
+            }
+
+            return compiledExpression;
+        }
+
+        public IGenericExpression<string> CompileString(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return Context.CompileGeneric<string>($"\"\"");
+            }
+
+            if (!StringExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                try
+                {
+                    compiledExpression = Context.CompileGeneric<string>(expression);
+                    StringExpressions[expression] = compiledExpression;
+                }
+                catch
+                {
+                    throw new Exception($"Failed to compile string expression: [{expression}]");
+                }
+            }
+
+            return compiledExpression;
+        }
+
+        public IDynamicExpression CompileDynamic(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return Context.CompileDynamic("");
+            }
+
+            if (!DynamicExpressions.TryGetValue(expression, out var compiledExpression))
+            {
+                try
+                {
+                    compiledExpression = Context.CompileDynamic(expression);
+                    DynamicExpressions[expression] = compiledExpression;
+                }
+                catch
+                {
+                    throw new Exception($"Failed to compile string expression: [{expression}]");
+                }
+            }
+
+            return compiledExpression;
+        }
+    }
+
+    public class FormulaTransformationUtility
+    {
         public static string TransformText(string input, string modelName)
         {
             const int MaxIterations = 10; // 최대 반복 횟수 설정
@@ -290,14 +635,24 @@ namespace ActuLiteModel
 
             return parts.ToArray();
         }
+    }
 
-        public void SaveSampleToText(string filePath)
+    public class SampleExporter
+    {
+        private static ModelEngine _engine;
+        
+        public static void SetEngine(ModelEngine modelEngine)  
+        {
+            _engine = modelEngine;
+        }
+
+        public static void SaveSampleToText(string filePath)
         {
             string fileName = GenerateVersionedFileName(filePath);
 
             StringBuilder sb = new StringBuilder();
 
-            foreach (var modelEntry in Models)
+            foreach (var modelEntry in _engine.Models)
             {
                 foreach (var keyValuePair in modelEntry.Value.Sheets)
                 {
@@ -321,14 +676,14 @@ namespace ActuLiteModel
             Console.WriteLine($"Text file saved: {fileName}");
         }
 
-        public void SaveSampleToExcel(string filePath)
+        public static void SaveSampleToExcel(string filePath)
         {
             string fileName = GenerateVersionedFileName(filePath);
 
             using (var package = new ExcelPackage())
             {
                 // 기존 시트들 생성
-                foreach (var model in Models.Values)
+                foreach (var model in _engine.Models.Values)
                 {
                     foreach (var sheet in model.Sheets.Where(m => !m.Value.IsEmpty()))
                     {
@@ -349,36 +704,16 @@ namespace ActuLiteModel
                 var modelPointSheet = package.Workbook.Worksheets.Add("ModelPoint");
                 WriteSelectedModelPointInfo(modelPointSheet);
 
+                // Expense 시트 추가 (Expenses 데이터가 있는 경우에만)
+                if (_engine.Expenses != null && _engine.Expenses.Any())
+                {
+                    var expenseSheet = package.Workbook.Worksheets.Add("Expense");
+                    WriteExpenseInfo(expenseSheet);
+                }
+
                 package.SaveAs(new FileInfo(fileName));
                 Console.WriteLine($"Excel 파일 저장됨: {fileName}");
             }
-        }
-
-        private void WriteSelectedModelPointInfo(ExcelWorksheet worksheet)
-        {
-            worksheet.Cells["A1"].Value = "Header";
-            worksheet.Cells["B1"].Value = "Value";
-            worksheet.Cells["C1"].Value = "Type";
-
-            worksheet.Cells["A1:C1"].Style.Font.Bold = true;
-            worksheet.Cells["A1:C1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-            worksheet.Cells["A1:C1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-
-            for (int i = 0; i < ModelPointInfo.Headers.Count; i++)
-            {
-                worksheet.Cells[i + 2, 1].Value = ModelPointInfo.Headers[i];
-                worksheet.Cells[i + 2, 2].Value = SelectedPoint[i]?.ToString();
-                worksheet.Cells[i + 2, 3].Value = ModelPointInfo.Types[i];
-            }
-
-            var modelPointInfoRange = worksheet.Cells[1, 1, ModelPointInfo.Headers.Count + 1, 3];
-            modelPointInfoRange.Style.Border.BorderAround(OfficeOpenXml.Style.ExcelBorderStyle.Thin);
-            modelPointInfoRange.Style.Border.Top.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-            modelPointInfoRange.Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-            modelPointInfoRange.Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-            modelPointInfoRange.Style.Border.Bottom.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-
-            worksheet.Cells.AutoFitColumns();
         }
 
         public static void RunLatestExcelFile(string baseFilePath)
@@ -432,7 +767,145 @@ namespace ActuLiteModel
             }
         }
 
-        private void WriteHeaderInfo(ExcelWorksheet worksheet, Model model, string headerLine)
+        private static void WriteSelectedModelPointInfo(ExcelWorksheet worksheet)
+        {
+            worksheet.Cells["A1"].Value = "Header";
+            worksheet.Cells["B1"].Value = "Value";
+            worksheet.Cells["C1"].Value = "Type";
+
+            worksheet.Cells["A1:C1"].Style.Font.Bold = true;
+            worksheet.Cells["A1:C1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            worksheet.Cells["A1:C1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+
+            for (int i = 0; i < _engine.ModelPointInfo.Headers.Count; i++)
+            {
+                worksheet.Cells[i + 2, 1].Value = _engine.ModelPointInfo.Headers[i];
+                worksheet.Cells[i + 2, 2].Value = _engine.SelectedPoint[i]?.ToString();
+                worksheet.Cells[i + 2, 3].Value = _engine.ModelPointInfo.Types[i];
+            }
+
+            var modelPointInfoRange = worksheet.Cells[1, 1, _engine.ModelPointInfo.Headers.Count + 1, 3];
+            modelPointInfoRange.Style.Border.BorderAround(OfficeOpenXml.Style.ExcelBorderStyle.Thin);
+            modelPointInfoRange.Style.Border.Top.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+            modelPointInfoRange.Style.Border.Bottom.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+
+            worksheet.Cells.AutoFitColumns();
+        }
+
+        private static void WriteExpenseInfo(ExcelWorksheet worksheet)
+        {
+            if (_engine.Expenses == null || !_engine.Expenses.Any())
+            {
+                return;
+            }
+
+            var productCode = _engine.Context.Variables["ProductCode"].ToString();
+            var riderCode = _engine.Context.Variables["RiderCode"].ToString();
+            var lookupKey = string.Join("|", new[] { productCode, riderCode }.Where(key => !string.IsNullOrWhiteSpace(key)));
+
+            if (!_engine.Expenses.ContainsKey(lookupKey))
+            {
+                return;
+            }
+
+            var properties = typeof(Input_exp).GetProperties();
+
+            // Write headers
+            for (int i = 0; i < properties.Length; i++)
+            {
+                worksheet.Cells[1, i + 1].Value = properties[i].Name;
+            }
+
+            var headerRange = worksheet.Cells[1, 1, 1, properties.Length];
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            headerRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+            // Write formula data
+            int row = 2;
+            foreach (var expense in _engine.Expenses[lookupKey])
+            {
+                for (int i = 0; i < properties.Length; i++)
+                {
+                    worksheet.Cells[row, i + 1].Value = properties[i].GetValue(expense)?.ToString() ?? "";
+                }
+                row++;
+            }
+
+            // Apply borders to formula data section
+            var formulaRange = worksheet.Cells[1, 1, row - 1, properties.Length];
+            formulaRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            formulaRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            formulaRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            formulaRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+
+            // Add empty rows for spacing
+            row += 2;
+
+            // Add calculated values header
+            worksheet.Cells[row, 1].Value = "Calculated Values";
+            worksheet.Cells[row, 1].Style.Font.Bold = true;
+            row++;
+
+            // Add headers again
+            for (int i = 0; i < properties.Length; i++)
+            {
+                worksheet.Cells[row, i + 1].Value = properties[i].Name;
+            }
+            var calculatedHeaderRange = worksheet.Cells[row, 1, row, properties.Length];
+            calculatedHeaderRange.Style.Font.Bold = true;
+            calculatedHeaderRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            calculatedHeaderRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+            row++;
+
+            // Add calculated values row with ProductCode and RiderCode
+            for (int i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                if (property.Name == "ProductCode")
+                {
+                    worksheet.Cells[row, i + 1].Value = productCode;
+                }
+                else if (property.Name == "RiderCode")
+                {
+                    worksheet.Cells[row, i + 1].Value = riderCode;
+                }
+                else if (property.Name.StartsWith("Alpha") ||
+                         property.Name.StartsWith("Beta") ||
+                         property.Name.StartsWith("Gamma") ||
+                         property.Name.StartsWith("Refund") ||
+                         property.Name.StartsWith("Etc"))
+                {
+                    try
+                    {
+                        double calculatedValue = _engine.GetExpense(property.Name);
+                        worksheet.Cells[row, i + 1].Value = calculatedValue;
+                    }
+                    catch
+                    {
+                        // Skip if calculation fails
+                    }
+                }
+            }
+
+            // Apply borders to calculated values section only (including the header)
+            var calculatedRange = worksheet.Cells[row - 1, 1, row, properties.Length];
+            calculatedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            calculatedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            calculatedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            calculatedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+
+            // Apply font style to all cells
+            var allRange = worksheet.Cells[1, 1, row, properties.Length];
+            allRange.Style.Font.Name = "맑은 고딕";
+            allRange.Style.Font.Size = 9;
+
+            worksheet.Cells.AutoFitColumns();
+        }
+
+        private static void WriteHeaderInfo(ExcelWorksheet worksheet, Model model, string headerLine)
         {
             string[] headers = headerLine.Split('\t');
             int dataColumnCount = headers.Length;
@@ -468,7 +941,7 @@ namespace ActuLiteModel
             worksheet.Column(startCol + 1).AutoFit();
         }
 
-        private void WriteHeaders(ExcelWorksheet worksheet, string headerLine)
+        private static void WriteHeaders(ExcelWorksheet worksheet, string headerLine)
         {
             string[] headers = headerLine.Split('\t');
             for (int i = 0; i < headers.Length; i++)
@@ -486,7 +959,7 @@ namespace ActuLiteModel
             }
         }
 
-        private void WriteData(ExcelWorksheet worksheet, string[] lines, string modelName)
+        private static void WriteData(ExcelWorksheet worksheet, string[] lines, string modelName)
         {
             string[] headers = lines[0].Split('\t');
             for (int i = 1; i < lines.Length; i++)
@@ -507,7 +980,7 @@ namespace ActuLiteModel
                     }
                     else
                     {
-                        string cellDescription = Models[modelName].CompiledCells[headers[j]].Description;
+                        string cellDescription = _engine.Models[modelName].CompiledCells[headers[j]].Description;
 
                         if (cellDescription != null && cellDescription.StartsWith("날짜"))
                         {
@@ -534,20 +1007,20 @@ namespace ActuLiteModel
             }
         }
 
-        private string DoubleToString(double number)
+        private static string DoubleToString(double number)
         {
             byte[] bytes = BitConverter.GetBytes(number);
             return Encoding.Default.GetString(bytes).TrimEnd('\0');
         }
 
-        private DateTime DoubleToDate(double doubleRepresentation)
+        private static DateTime DoubleToDate(double doubleRepresentation)
         {
             // 기준일 (예: 1900년 1월 1일)로부터의 경과 일수를 날짜로 변환
             DateTime baseDate = new DateTime(1900, 1, 1);
             return baseDate.AddDays(doubleRepresentation);
         }
 
-        private string GenerateVersionedFileName(string filePath)
+        private static string GenerateVersionedFileName(string filePath)
         {
             string directory = Path.GetDirectoryName(filePath);
             string fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -582,4 +1055,6 @@ namespace ActuLiteModel
             return newFileName;
         }
     }
+
+
 }

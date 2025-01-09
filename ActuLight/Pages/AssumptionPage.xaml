@@ -10,10 +10,11 @@
 
         <!-- 상단 버튼 패널 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
-            <TextBox x:Name="SearchTextBox" Width="200" Margin="5,0,0,0" TextChanged="SearchTextBox_TextChanged"/>
+            <Label Content="찾기" VerticalAlignment="Center" Margin="10,0,10,0"/>
+            <TextBox x:Name="SearchTextBox" Width="200" Margin="0,0,0,0" TextChanged="SearchTextBox_TextChanged"/>
             <Button x:Name="SearchButton" 
                 Click="SearchButton_Click" 
-                Margin="5,0,0,0" 
+                Margin="10,0,0,0" 
                 ToolTip="위험률 검색">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE721;" 
@@ -40,6 +41,13 @@
                           IsReadOnly="True"
                           CanUserSortColumns="False"
                           MouseDoubleClick="ExpenseDataGrid_MouseDoubleClick"/>
+            </TabItem>
+            <TabItem Header="ScriptRule">
+                <DataGrid x:Name="ScriptRulesDataGrid"
+                          AutoGenerateColumns="True" 
+                          IsReadOnly="True"
+                          CanUserSortColumns="False"
+                          MouseDoubleClick="ScriptRulesDataGrid_MouseDoubleClick"/>
             </TabItem>
         </TabControl>
 

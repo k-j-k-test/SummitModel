@@ -174,7 +174,7 @@ namespace ActuLight.Pages
                     var table = selectedTab.Header.ToString();
                     var productCode = ProductCodeFilterBox.Text.Trim();
                     var riderCode = RiderCodeFilterBox.Text.Trim();
-                    await Task.Run(() => _modelWriter.WriteResultsAsync(_outputFolderPath, productCode, riderCode));
+                    await Task.Run(() => _modelWriter.WriteResultsAsync(FilePage.SelectedFolderPath, productCode, riderCode));
                 }
 
                 _timer.Stop();

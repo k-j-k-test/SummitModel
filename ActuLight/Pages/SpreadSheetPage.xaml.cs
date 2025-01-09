@@ -21,6 +21,7 @@ using System.Windows.Controls.Primitives;
 using Windows.Graphics.Printing.Workflow;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using ICSharpCode.AvalonEdit.Editing;
 
 namespace ActuLight.Pages
 {
@@ -52,33 +53,35 @@ namespace ActuLight.Pages
         public SpreadSheetPage()
         {
             InitializeComponent();
+
+            // 1. 구문 강조 설정
             SyntaxHighlighter = new SyntaxHighlighter(ScriptEditor);
             ScriptEditor.TextArea.TextView.LineTransformers.Add(SyntaxHighlighter);
             UpdateSyntaxHighlighter();
+
+            // 2. 기본 설정들
             LoadSignificantDigitsSetting();
             SetupAutoSaveTimer();
 
-            // 폴딩 기능 추가
+            // 3. 폴딩 관련 설정
             var foldingMargin = new FoldingMargin();
-            foldingMargin.Width = 10;
             ScriptEditor.TextArea.LeftMargins.Add(foldingMargin);
             FoldingManager = FoldingManager.Install(ScriptEditor.TextArea);
             FoldingStrategy = new RegionFoldingStrategy();
             FoldingStrategy.UpdateFoldings(FoldingManager, ScriptEditor.Document);
+
+            // 4. 에디터 옵션 설정
             ScriptEditor.Options.EnableHyperlinks = true;
             ScriptEditor.Options.EnableEmailHyperlinks = true;
             ScriptEditor.Options.ConvertTabsToSpaces = true;
-
-            //텍스트 변경 이벤트
-            ScriptEditor.TextChanged += ScriptEditor_TextChanged;
             ScriptEditor.Options.ShowSpaces = false;
-            ScriptEditor.Options.HighlightCurrentLine = true;
+            ScriptEditor.Options.HighlightCurrentLine = false;
             ScriptEditor.Options.AllowScrollBelowDocument = true;
+            ScriptEditor.ShowLineNumbers = true;
 
-            // 마우스 우클릭 이벤트 처리를 위한 핸들러 추가
+            // 5. 이벤트 핸들러 설정
+            ScriptEditor.TextChanged += ScriptEditor_TextChanged;
             ModelsList.MouseRightButtonUp += ModelsList_MouseRightButtonUp;
-
-            // Ctrl 키 이벤트 처리를 위한 핸들러 추가
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Save;
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Folding;
             ScriptEditor.PreviewKeyDown += ScriptEditor_PreviewKeyDown_Region;
@@ -108,6 +111,10 @@ namespace ActuLight.Pages
                     await LoadDataAsync(openFileDialog.FileName);
                 }
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"데이터 로드 중 오류 발생: 먼저 파일열기를 진행해야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             finally
             {
                 LoadingOverlay.Visibility = Visibility.Collapsed;
@@ -125,6 +132,7 @@ namespace ActuLight.Pages
                 {
                     Scripts = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
                     Models.Clear();
+                    cellMatches = null;
 
                     foreach (var kvp in Scripts)
                     {
@@ -144,8 +152,6 @@ namespace ActuLight.Pages
                         ScriptEditor.Text = Scripts.Values.ToList()[i];
                         await UpdateModelAndUIFromScript(Scripts[ModelsList.SelectedItem.ToString()]);
                     }
-
-                    UpdateSyntaxHighlighter();
                 });
             }
             catch (Exception ex)
@@ -202,7 +208,7 @@ namespace ActuLight.Pages
             {
                 await DebouncerAsync.Debounce("ScriptEditor_TextChanged", 300, async () =>
                 {
-                    await UpdateModelAndUIFromScript(ScriptEditor.Text);
+                    await UpdateModelAndUIFromScript(ScriptEditor.Text);                 
                 });
             }
         }
@@ -276,7 +282,7 @@ namespace ActuLight.Pages
             }
 
             // Update invokeList
-            var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d+)\).*$", RegexOptions.Multiline);
+            var invokePattern = new Regex(@"^[ \t]*Invoke\((\w+),\s*(\d{1,5})\).*$", RegexOptions.Multiline);
             var newInvokeMatches = invokePattern.Matches(text);
 
             var newInvokeList = newInvokeMatches
@@ -304,7 +310,42 @@ namespace ActuLight.Pages
             {
                 UpdateCellList(selectedModel);
                 UpdateSyntaxHighlighter();
+                FoldingStrategy.UpdateFoldings(FoldingManager, ScriptEditor.Document);
             });
+        }
+
+        private async void LoadTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string folderPath = FilePage.SelectedFolderPath;
+                if (string.IsNullOrEmpty(folderPath))
+                {
+                    MessageBox.Show("먼저 FilePage에서 파일을 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                LoadingOverlay.Visibility = Visibility.Visible;
+                string scriptsBasePath = Path.Combine(folderPath, "Scripts");
+
+                var productCode = App.ModelEngine.Context.Variables["ProductCode"].ToString();
+                var riderCode = App.ModelEngine.Context.Variables["RiderCode"].ToString();
+
+                App.ModelEngine.ProcessScriptTemplate(productCode, riderCode, scriptsBasePath);
+                string autoScriptPath = Path.Combine(scriptsBasePath, "AutoScripts", $"{productCode}_{riderCode}.json");
+                await LoadDataAsync(autoScriptPath);
+
+                await UpdateUIAsync();
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"템플릿 처리 중 오류 발생: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void AddModel_Click(object sender, RoutedEventArgs e)
@@ -344,13 +385,24 @@ namespace ActuLight.Pages
                         if (model.CompiledCells.TryGetValue(cellName, out CompiledCell cell))
                         {
                             var textBlock = new TextBlock { Text = cellName };
+
+                            // 컴파일 실패한 셀은 빨간색으로 표시
                             if (!cell.IsCompiled)
                             {
                                 textBlock.Foreground = Brushes.Red;
                                 textBlock.FontWeight = FontWeights.Bold;
                             }
+                            // Invoke 패턴에 포함된 셀은 보라색으로 표시
+                            else if (invokeList?.Any(invoke => invoke.CellName == cellName) == true)
+                            {
+                                textBlock.Foreground = Brushes.LightGreen;
+                            }
+
+                            // 컨텍스트 메뉴 이벤트 추가
+                            textBlock.MouseRightButtonUp += CellItem_MouseRightButtonUp;
+
                             cellItems.Add(textBlock);
-                        }           
+                        }
                     }
                 }
 
@@ -525,35 +577,56 @@ namespace ActuLight.Pages
 
         private void RenameModel(string oldModelName)
         {
-            var dialog = new InputDialog("모델 이름 변경", "새 모델 이름을 입력하세요:", oldModelName);
-            if (dialog.ShowDialog() == true)
-            {
-                string newModelName = dialog.Answer;
+            var modelsList = ModelsList.ItemsSource as List<string>;
+            int index = modelsList.IndexOf(oldModelName);
 
-                if (!string.IsNullOrWhiteSpace(newModelName) && !Models.ContainsKey(newModelName))
+            var textBox = new TextBox();
+            textBox.Text = oldModelName;
+            textBox.SelectAll();
+
+            textBox.LostFocus += OnRenameComplete;
+            textBox.KeyDown += (s, e) => {
+                if (e.Key == Key.Enter)
                 {
-                    Models[newModelName] = Models[oldModelName];
-                    Models[newModelName].Name = newModelName;
+                    OnRenameComplete(s, e);
+                }
+                else if (e.Key == Key.Escape)
+                {
+                    ModelsList.ItemsSource = null;
+                    ModelsList.ItemsSource = modelsList;
+                    ModelsList.SelectedIndex = index;
+                }
+            };
+
+            var container = ModelsList.ItemContainerGenerator.ContainerFromIndex(index) as ListBoxItem;
+            container.Content = textBox;
+            textBox.Focus();
+
+            void OnRenameComplete(object sender, RoutedEventArgs e)
+            {
+                var newModelName = textBox.Text.Trim();
+
+                if (!string.IsNullOrWhiteSpace(newModelName) && !Models.ContainsKey(newModelName) && newModelName != oldModelName)
+                {
+                    Models[newModelName] = new Model(newModelName, App.ModelEngine);
                     Models.Remove(oldModelName);
 
                     Scripts[newModelName] = Scripts[oldModelName];
                     Scripts.Remove(oldModelName);
 
-                    var modelsList = ModelsList.ItemsSource as List<string>;
-                    int index = modelsList.IndexOf(oldModelName);
                     modelsList[index] = newModelName;
-
                     ModelsList.ItemsSource = null;
                     ModelsList.ItemsSource = modelsList;
                     ModelsList.SelectedIndex = index;
                     selectedModel = newModelName;
 
-                    UpdateSyntaxHighlighter();
+                    UpdateModelAndUIFromScript(Scripts[newModelName]);
                 }
                 else
                 {
-                    MessageBox.Show("유효하지 않은 모델 이름이거나 이미 존재하는 모델 이름입니다.",
-                        "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    ModelsList.ItemsSource = null;
+                    ModelsList.ItemsSource = modelsList;
+                    ModelsList.SelectedIndex = index;
                 }
             }
         }
@@ -634,14 +707,17 @@ namespace ActuLight.Pages
 
         private void ViewSelectedModelPoint_Click(object sender, RoutedEventArgs e)
         {
-            var mainWindow = Application.Current.MainWindow as MainWindow;
-            var modelPointPage = mainWindow?.pageCache["Pages/ModelPointPage.xaml"] as ModelPointPage;
-
-            if (modelPointPage?.SelectedData != null)
+            try
             {
-                ShowSelectedModelPointWindow(modelPointPage.SelectedData);
+                var mainWindow = Application.Current.MainWindow as MainWindow;
+                var modelPointPage = mainWindow?.pageCache["Pages/ModelPointPage.xaml"] as ModelPointPage;
+
+                if (modelPointPage?.SelectedData != null)
+                {
+                    ShowSelectedModelPointWindow(modelPointPage.SelectedData);
+                }
             }
-            else
+            catch
             {
                 MessageBox.Show("선택된 모델포인트가 없습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -652,7 +728,7 @@ namespace ActuLight.Pages
             var window = new Window
             {
                 Title = "선택된 모델포인트",
-                Width = 600,  // 창 너비를 조금 늘렸습니다
+                Width = 600,
                 Height = 600,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen
             };
@@ -663,144 +739,34 @@ namespace ActuLight.Pages
                 IsReadOnly = true
             };
 
-            dataGrid.Columns.Add(new DataGridTextColumn
-            {
-                Header = "헤더",
-                Binding = new System.Windows.Data.Binding("Header")
-            });
-            dataGrid.Columns.Add(new DataGridTextColumn
-            {
-                Header = "값",
-                Binding = new System.Windows.Data.Binding("Value")
-            });
-            dataGrid.Columns.Add(new DataGridTextColumn
-            {
-                Header = "타입",
-                Binding = new System.Windows.Data.Binding("Type")
-            });
-
-            var data = new List<ModelPointItem>();
-            for (int i = 0; i < App.ModelEngine.ModelPointInfo.Headers.Count; i++)
-            {
-                data.Add(new ModelPointItem
+            var data = Enumerable.Range(0, App.ModelEngine.ModelPointInfo.Headers.Count)
+                .Select(i => new
                 {
                     Header = App.ModelEngine.ModelPointInfo.Headers[i],
                     Value = selectedData[i].ToString(),
                     Type = App.ModelEngine.ModelPointInfo.Types[i]
-                });
-            }
+                })
+                .ToList();
+
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "헤더",
+                Binding = new Binding("Header")
+            });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "값",
+                Binding = new Binding("Value")
+            });
+            dataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "타입",
+                Binding = new Binding("Type")
+            });
 
             dataGrid.ItemsSource = data;
             window.Content = dataGrid;
             window.Show();
-        }
-
-        private void HighlightHeaders()
-        {
-            if (SheetTabControl.SelectedItem is TabItem selectedTab &&
-                selectedTab.Content is DataGrid dataGrid &&
-                invokeList != null && invokeList.Any())
-            {
-                var cellNamesToHighlight = invokeList.Select(invoke => invoke.CellName).ToHashSet();
-
-                foreach (var column in dataGrid.Columns)
-                {
-                    if (column is DataGridTextColumn textColumn)
-                    {
-                        var header = textColumn.Header as TextBlock;
-                        if (header != null && cellNamesToHighlight.Contains(header.Text))
-                        {
-                            header.FontWeight = FontWeights.Bold;
-                            //header.Foreground = Brushes.Red;
-
-                            var style = new Style(typeof(DataGridCell), column.CellStyle);
-                            style.Setters.Add(new Setter(DataGridCell.FontWeightProperty, FontWeights.Bold));
-                            style.Setters.Add(new Setter(DataGridCell.ForegroundProperty, Brushes.Red));
-
-                            column.CellStyle = style;
-                        }
-                    }
-                }
-            }
-        }
-
-        private void ColumnHeader_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            var header = sender as DataGridColumnHeader;
-            if (header != null)
-            {
-                ShowCellDetails((header.Column.Header as TextBlock).Text);
-            }
-        }
-
-        private void ShowCellDetails(string cellName)
-        {
-            // 현재 선택된 탭(모델)의 이름 가져오기
-            var selectedTabItem = SheetTabControl.SelectedItem as TabItem;
-            if (selectedTabItem == null)
-            {
-                MessageBox.Show("No tab selected.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            string currentModelName = selectedTabItem.Header.ToString();
-
-            if (!Models.TryGetValue(currentModelName, out Model model))
-            {
-                MessageBox.Show($"Model '{currentModelName}' not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            if (!model.CompiledCells.TryGetValue(cellName, out CompiledCell cell))
-            {
-                MessageBox.Show($"Cell '{cellName}' not found in model '{currentModelName}'.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            var detailWindow = new Window
-            {
-                Title = $"Cell Details: {cellName}",
-                Width = 500,
-                Height = 300,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen
-            };
-
-            var grid = new Grid();
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-            var headerTextBlock = new TextBlock
-            {
-                Text = $"Cell: {cellName}",
-                FontWeight = FontWeights.Bold,
-                Margin = new Thickness(10)
-            };
-            Grid.SetRow(headerTextBlock, 0);
-            grid.Children.Add(headerTextBlock);
-
-            var modelTextBlock = new TextBlock
-            {
-                Text = $"Model: {currentModelName}",
-                Margin = new Thickness(10, 0, 10, 10)
-            };
-            Grid.SetRow(modelTextBlock, 1);
-            grid.Children.Add(modelTextBlock);
-
-            var formulaTextBox = new TextBox
-            {
-                Text = cell.Formula,
-                IsReadOnly = true,
-                TextWrapping = TextWrapping.Wrap,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Margin = new Thickness(10)
-            };
-            Grid.SetRow(formulaTextBox, 2);
-            grid.Children.Add(formulaTextBox);
-
-            detailWindow.Content = grid;
-            detailWindow.Show();
         }
 
 
@@ -827,7 +793,17 @@ namespace ActuLight.Pages
                     Directory.CreateDirectory(modelsFolder);
                 }
 
-                string json = JsonConvert.SerializeObject(Scripts, Formatting.Indented);
+                // ModelsList의 순서대로 새로운 Scripts 딕셔너리 생성
+                var orderedScripts = new Dictionary<string, string>();
+                foreach (string modelName in ModelsList.Items)
+                {
+                    if (Scripts.ContainsKey(modelName))
+                    {
+                        orderedScripts[modelName] = Scripts[modelName];
+                    }
+                }
+
+                string json = JsonConvert.SerializeObject(orderedScripts, Formatting.Indented);
                 string fileName;
 
                 if (IsAuto)
@@ -1224,6 +1200,7 @@ namespace ActuLight.Pages
                     AutoGenerateColumns = false,
                     IsReadOnly = true,
                     CanUserSortColumns = false,
+                    FrozenColumnCount = 1
                 };
                 tabItem.Content = dataGrid;
             }
@@ -1265,17 +1242,6 @@ namespace ActuLight.Pages
                         var binding = new Binding($"[{header}]");
                         binding.Converter = new SignificantDigitsConverter(SignificantDigits);
                         column.Binding = binding;
-
-
-                        // 컨텍스트 메뉴 이벤트 추가
-                        var existingHeaderStyle = column.HeaderStyle ?? dataGrid.ColumnHeaderStyle ?? Application.Current.TryFindResource(typeof(DataGridColumnHeader)) as Style;
-
-                        if (existingHeaderStyle != null)
-                        {
-                            var newHeaderStyle = new Style(typeof(DataGridColumnHeader), existingHeaderStyle);
-                            newHeaderStyle.Setters.Add(new EventSetter(DataGridColumnHeader.MouseDoubleClickEvent, new MouseButtonEventHandler(ColumnHeader_MouseDoubleClick)));
-                            column.HeaderStyle = newHeaderStyle;
-                        }
 
                         dataGrid.Columns.Add(column);
                     }
@@ -1348,6 +1314,100 @@ namespace ActuLight.Pages
                 int index = cellOrder.IndexOf(key);
                 return index >= 0 ? index : int.MaxValue;
             });
+        }
+
+        private void HighlightHeaders()
+        {
+            if (SheetTabControl.SelectedItem is TabItem selectedTab &&
+                selectedTab.Content is DataGrid dataGrid &&
+                invokeList != null && invokeList.Any())
+            {
+                var cellNamesToHighlight = invokeList.Select(invoke => invoke.CellName).ToHashSet();
+                DataGridColumn firstHighlightedColumn = null;
+
+                foreach (var column in dataGrid.Columns)
+                {
+                    if (column is DataGridTextColumn textColumn)
+                    {
+                        var header = textColumn.Header as TextBlock;
+                        if (header != null && cellNamesToHighlight.Contains(header.Text))
+                        {
+                            header.FontWeight = FontWeights.Bold;
+                            column.CellStyle = new Style(typeof(DataGridCell))
+                            {
+                                Setters =
+                        {
+                            new Setter(DataGridCell.FontWeightProperty, FontWeights.Bold),
+                            new Setter(DataGridCell.ForegroundProperty, Brushes.Red)
+                        }
+                            };
+                            firstHighlightedColumn = firstHighlightedColumn ?? column;
+                        }
+                    }
+                }
+
+                if (firstHighlightedColumn != null && dataGrid.Items.Count > 0)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        dataGrid.ScrollIntoView(dataGrid.Items[0], firstHighlightedColumn)));
+                }
+            }
+        }
+
+
+        // Invoke 패턴 추가 메서드
+        private void CellItem_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            var textBlock = sender as TextBlock;
+            if (textBlock == null) return;
+
+            var contextMenu = new ContextMenu();
+            var cellName = textBlock.Text;
+
+            // 추가 메뉴 아이템
+            var addMenuItem = new MenuItem { Header = "Invoke 추가" };
+            addMenuItem.Click += (s, args) => AddInvokePattern(cellName);
+            contextMenu.Items.Add(addMenuItem);
+
+            // 삭제 메뉴 아이템 (Invoke 패턴에 있는 경우에만 활성화)
+            if (invokeList?.Any(invoke => invoke.CellName == cellName) == true)
+            {
+                var removeMenuItem = new MenuItem { Header = "Invoke 삭제" };
+                removeMenuItem.Click += (s, args) => RemoveInvokePattern(cellName);
+                contextMenu.Items.Add(removeMenuItem);
+            }
+
+            contextMenu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        private void AddInvokePattern(string cellName)
+        {
+            var document = ScriptEditor.Document;
+            string invokePattern = $"Invoke({cellName}, 0)";
+
+            // 마지막 줄에 개행 문자가 없으면 추가
+            if (!document.Text.EndsWith(Environment.NewLine))
+            {
+                document.Insert(document.TextLength, Environment.NewLine);
+            }
+
+            // Invoke 패턴 추가
+            document.Insert(document.TextLength, invokePattern + Environment.NewLine);
+        }
+
+        private void RemoveInvokePattern(string cellName)
+        {
+            var document = ScriptEditor.Document;
+            var text = document.Text;
+            var lines = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None).ToList();
+
+            // Invoke 패턴에 맞는 라인 찾기
+            var invokePattern = new Regex($@"^[ \t]*Invoke\({cellName},\s*\d+\).*$");
+            var newLines = lines.Where(line => !invokePattern.IsMatch(line)).ToList();
+
+            // 문서 업데이트
+            document.Text = string.Join(Environment.NewLine, newLines);
         }
 
 
@@ -1445,13 +1505,6 @@ namespace ActuLight.Pages
             // 전체 파라미터를 그룹으로 사용
             return match.Groups[1].Value.Trim();
         }
-    }
-
-    public class ModelPointItem
-    {
-        public string Header { get; set; }
-        public string Value { get; set; }
-        public string Type { get; set; }
     }
 
     public class SignificantDigitsConverter : IValueConverter
@@ -1558,82 +1611,6 @@ namespace ActuLight.Pages
 
             newFoldings.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
             return newFoldings;
-        }
-    }
-
-    public class InputDialog : Window
-    {
-        private TextBox answerTextBox;
-        public string Answer => answerTextBox.Text;
-
-        public InputDialog(string title, string question, string defaultAnswer = "")
-        {
-            Title = title;
-            Width = 300;
-            Height = 180;
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
-
-            // 기본 WPF 스타일 적용
-            Style = (Style)FindResource(typeof(Window));
-
-            var grid = new Grid();
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            var questionTextBlock = new TextBlock
-            {
-                Text = question,
-                Margin = new Thickness(10),
-                TextWrapping = TextWrapping.Wrap
-            };
-            grid.Children.Add(questionTextBlock);
-            Grid.SetRow(questionTextBlock, 0);
-
-            answerTextBox = new TextBox
-            {
-                Text = defaultAnswer,
-                Margin = new Thickness(10),
-                Height = 25
-            };
-            grid.Children.Add(answerTextBox);
-            Grid.SetRow(answerTextBox, 1);
-
-            var buttonsPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(10)
-            };
-
-            var okButton = new Button
-            {
-                Content = "확인",
-                Width = 75,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0),
-                IsDefault = true
-            };
-            okButton.Click += (sender, e) => DialogResult = true;
-
-            var cancelButton = new Button
-            {
-                Content = "취소",
-                Width = 75,
-                Height = 30,
-                IsCancel = true
-            };
-            cancelButton.Click += (sender, e) => DialogResult = false;
-
-            buttonsPanel.Children.Add(okButton);
-            buttonsPanel.Children.Add(cancelButton);
-            grid.Children.Add(buttonsPanel);
-            Grid.SetRow(buttonsPanel, 2);
-
-            Content = grid;
-
-            // 텍스트박스에 포커스 설정
-            Loaded += (sender, e) => answerTextBox.Focus();
         }
     }
 }

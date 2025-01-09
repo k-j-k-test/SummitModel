@@ -1,11 +1,13 @@
 ﻿using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace ActuLiteModel
 {
@@ -23,7 +25,14 @@ namespace ActuLiteModel
 
         public static double Eval(string modelName, string cellName, double t)
         {
-            Model model = ModelDict[modelName];
+            #if DEBUG
+            if (cellName == "mort_rate_mth_2")
+            {
+                ;
+            }
+            #endif
+
+            Model model = ModelDict[modelName];        
 
             // 현재 t 값 저장
             int t0 = (int)model.Engine.Context.Variables["t"];
@@ -226,6 +235,37 @@ namespace ActuLiteModel
             }
         }
 
+        public static double D(params double[] items)
+        {
+            int t = (int)Engine.Context.Variables["t"];
+            int renewal = (int)Engine.Context.Variables["Renewal"];
+
+            if (renewal > 0 || t >= items.Length)
+            {
+                return 1.0;
+            }
+            else
+            {
+                return items[t];
+            }
+        }
+
+        public static double U(params double[] items)
+        {
+            int t = (int)Engine.Context.Variables["t"];
+            int renewal = (int)Engine.Context.Variables["Renewal"];
+            int age = (int)Engine.Context.Variables["Age"];
+
+            if (renewal > 0 || age+t < 15 || t >= items.Length)
+            {
+                return 1.0;
+            }
+            else
+            {
+                return items[t];
+            }
+        }
+
         public static Vector Vector(string modelName, string cellName, double start, double end)
         {
             int _start = (int)(start + epsilon(start));
@@ -286,6 +326,21 @@ namespace ActuLiteModel
             return Math.Round(number * SA) / SA;
         }
 
+        public static double RoundC(double number, double digt)
+        {
+            // 기존 Round 메서드의 문제를 해결하기 위해 미세한 값을 더해줍니다
+            double adjustment = 0.00000001;
+
+            if (number > 0)
+            {
+                number += adjustment;
+            }
+
+            double multiplier = (double)Math.Pow(10, digt);
+
+            return Math.Round(number * multiplier, 0, MidpointRounding.AwayFromZero) / multiplier;
+        }
+
         public static int Choose(int index, params int[] items)
         {
             int idx = Math.Max(Math.Min(index, items.Length), 1);
@@ -324,7 +379,7 @@ namespace ActuLiteModel
             sb.Append('{');
             bool isFirst = true;
 
-            foreach (var kvp in model.Parameters)
+            foreach (var kvp in model.Parameters.OrderBy(x => x.Key))
             {
                 if (!isFirst)
                     sb.Append(',');

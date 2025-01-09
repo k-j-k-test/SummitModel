@@ -13,6 +13,7 @@ using System.Diagnostics;
 using Microsoft.SqlServer.Server;
 using System.Runtime.Remoting.Contexts;
 using System.Web.UI.WebControls;
+using Newtonsoft.Json;
 
 namespace ActuLiteModel
 {
@@ -25,6 +26,7 @@ namespace ActuLiteModel
         public Dictionary<string, List<Input_assum>> Assumptions { get; private set; }  //Key: {Key1}|{Key2}|{Key3}
         public Dictionary<string, List<Input_exp>> Expenses { get; private set; }   //Key: {ProductCode}|{RiderCode}
         public Dictionary<string, List<Input_output>> Outputs { get; private set; } //Key: {Table}|{ProductCode}|{RiderCode}
+        public Dictionary<string, List<string>> ScriptRules { get; private set; } //Key: {ProductCode}|{RiderCode}
 
         public Dictionary<string, IGenericExpression<bool>> BoolExpressions { get; private set; }
         public Dictionary<string, IGenericExpression<double>> DoubleExpressions { get; private set; }
@@ -33,6 +35,7 @@ namespace ActuLiteModel
         public Dictionary<string, IDynamicExpression> DynamicExpressions { get; private set; }
 
         public (List<string> Types, List<string> Headers) ModelPointInfo { get; private set; }
+        public List<string> ScriptRulesHeader { get; private set; }
 
         public List<object> SelectedPoint { get;  set; }
 
@@ -43,6 +46,7 @@ namespace ActuLiteModel
             Assumptions = new Dictionary<string, List<Input_assum>>();
             Expenses = new Dictionary<string, List<Input_exp>>();
             Outputs = new Dictionary<string, List<Input_output>>();
+            ScriptRules = new Dictionary<string, List<string>>();
             BoolExpressions = new Dictionary<string, IGenericExpression<bool>>();
             DoubleExpressions = new Dictionary<string, IGenericExpression<double>>();
             IntExpressions = new Dictionary<string, IGenericExpression<int>>();
@@ -81,8 +85,6 @@ namespace ActuLiteModel
         {
             Assumptions.Clear();
 
-            var uniqueConditions = new HashSet<string>();
-
             foreach (var assumption in assumptions)
             {
                 string[] keys = { assumption.Key1, assumption.Key2, assumption.Key3 };
@@ -95,15 +97,9 @@ namespace ActuLiteModel
 
                 Assumptions[lookupKey].Add(assumption);
 
-                if (!string.IsNullOrWhiteSpace(assumption.Condition))
-                {
-                    uniqueConditions.Add(assumption.Condition);
-                }
-            }
-
-            foreach (var condition in uniqueConditions)
-            {
-                BoolExpressions[condition] = CompileBool(condition);
+                CompileBool(assumption.Condition1);
+                CompileBool(assumption.Condition2);
+                CompileBool(assumption.Condition3);
             }
         }
 
@@ -111,55 +107,31 @@ namespace ActuLiteModel
         {
             Expenses.Clear();
 
-            // Condition과 Value 컴파일을 위한 HashSet
-            var uniqueConditions = new HashSet<string>();
-            var uniqueValues = new HashSet<string>();
-
-            // 모든 expense 항목들을 순회하면서 조건과 수식들을 수집
             foreach (var expense in expenses)
             {
-                // 조건이 있는 경우 HashSet에 추가
-                if (!string.IsNullOrWhiteSpace(expense.Condition))
-                {
-                    uniqueConditions.Add(expense.Condition);
-                }
-
-                // 모든 수식 필드를 검사하여 uniqueValues에 추가
-                var properties = typeof(Input_exp).GetProperties()
-                    .Where(p => p.Name.StartsWith("Alpha") ||
-                               p.Name.StartsWith("Beta") ||
-                               p.Name.StartsWith("Gamma") ||
-                               p.Name.StartsWith("Refund") ||
-                               p.Name.StartsWith("Etc"));
-
-                foreach (var prop in properties)
-                {
-                    string value = prop.GetValue(expense) as string;
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        uniqueValues.Add(value);
-                    }
-                }
-
-                // Expenses 딕셔너리에 expense 추가
                 string key = expense.ProductCode + "|" + expense.RiderCode;
                 if (!Expenses.ContainsKey(key))
                 {
                     Expenses[key] = new List<Input_exp>();
                 }
                 Expenses[key].Add(expense);
-            }
 
-            // 조건 컴파일
-            foreach (var condition in uniqueConditions)
-            {
-                BoolExpressions[condition] = CompileBool(condition);
-            }
+                CompileBool(expense.Condition1);
+                CompileBool(expense.Condition2);
+                CompileBool(expense.Condition3);
 
-            // 수식 컴파일
-            foreach (var value in uniqueValues)
-            {
-                DoubleExpressions[value] = CompileDouble(value);
+                var properties = typeof(Input_exp).GetProperties()
+                    .Where(p => p.Name.StartsWith("Alpha") ||
+                               p.Name.StartsWith("Beta") ||
+                               p.Name.StartsWith("Gamma") ||
+                               p.Name.StartsWith("Ce") ||
+                               p.Name.StartsWith("Refund") ||
+                               p.Name.StartsWith("Etc"));
+
+                foreach (var prop in properties)
+                {
+                    CompileDouble(prop.GetValue(expense) as string);
+                }
             }
         }
 
@@ -272,6 +244,123 @@ namespace ActuLiteModel
             }
         }
 
+        public void SetScript(Dictionary<string, string> scripts)
+        {
+            Models.Clear();
+
+            foreach (var kvp in scripts)
+            {
+                Models[kvp.Key] = new Model(kvp.Key, this);
+
+                // Parse and register cells from script
+                var cellPattern = new Regex(@"(?:^//(?<description>.*?)\r?\n)?^(?<cellName>\w+)\s*--\s*(?<formula>.+)$", RegexOptions.Multiline);
+                var cellMatches = cellPattern.Matches(kvp.Value);
+
+                foreach (Match match in cellMatches)
+                {
+                    string cellName = match.Groups["cellName"].Value;
+                    string description = match.Groups["description"].Value.Trim();
+                    string formula = match.Groups["formula"].Value.Trim();
+
+                    Models[kvp.Key].ResisterCell(cellName, formula, description);
+                }
+            }
+        }
+
+        public void SetScriptRule(List<List<object>> scriptRules)
+        {
+            ScriptRules.Clear();
+
+            if (scriptRules.Count == 0) return;
+
+            // 헤더 저장
+            ScriptRulesHeader = scriptRules[0].Select(h => h?.ToString() ?? "").ToList();
+            int productCodeIndex = ScriptRulesHeader.IndexOf("ProductCode");
+            int riderCodeIndex = ScriptRulesHeader.IndexOf("RiderCode");
+
+            if (productCodeIndex == -1 || riderCodeIndex == -1)
+            {
+                throw new Exception("Required headers not found in rule.txt");
+            }
+
+            // Skip header row and process data rows
+            foreach (var row in scriptRules.Skip(1))
+            {
+                if (row.Count != ScriptRulesHeader.Count) continue;
+
+                var productCode = row[productCodeIndex]?.ToString() ?? "";
+                var riderCode = row[riderCodeIndex]?.ToString() ?? "";
+                string key = $"{productCode}|{riderCode}";
+
+                // Convert row data to List<string>
+                var ruleList = row.Select(item => item?.ToString() ?? "").ToList();
+                ScriptRules[key] = ruleList;
+            }
+        }
+
+        public void ProcessScriptTemplate(string productCode, string riderCode, string scriptsBasePath)
+        {
+            string key = $"{productCode}|{riderCode}";
+            if (!ScriptRules.TryGetValue(key, out List<string> ruleList))
+            {
+                throw new Exception($"No script rules found for {key}");
+            }
+
+            var ruleDict = new Dictionary<string, string>();
+            for (int i = 0; i < ScriptRulesHeader.Count; i++)
+            {
+                string value = ruleList[i]?.ToString() ?? "";
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    ruleDict[ScriptRulesHeader[i]] = value;
+                }
+            }
+
+            Dictionary<string, string> scriptDict;
+
+            // Always check for custom script first
+            string customScriptPath = Path.Combine(scriptsBasePath, "CustomScripts", $"{productCode}_{riderCode}.json");
+            if (File.Exists(customScriptPath))
+            {
+                string jsonContent = File.ReadAllText(customScriptPath);
+                scriptDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(jsonContent);
+                SetScript(scriptDict);
+                return;
+            }
+
+            // If no custom script exists, proceed with template processing
+            if (!ruleDict.TryGetValue("ScriptType", out string scriptType))
+            {
+                throw new Exception("ScriptType not found in rules");
+            }
+
+            if (string.IsNullOrWhiteSpace(scriptType) || scriptType == "0")
+            {
+                return;
+            }
+
+            // Process template only if custom script doesn't exist
+            string templatePath = Path.Combine(scriptsBasePath, "Template", $"ScriptType{scriptType}.txt");
+            if (!File.Exists(templatePath))
+            {
+                throw new Exception($"Template file not found: {templatePath}");
+            }
+
+            var templateProcessor = new TemplateProcessor(ruleDict);
+            var templateLines = File.ReadAllLines(templatePath).ToList();
+            scriptDict = templateProcessor.ProcessTemplateToScripts(templateLines);
+
+            string autoScriptsPath = Path.Combine(scriptsBasePath, "AutoScripts");
+            if (!Directory.Exists(autoScriptsPath))
+            {
+                Directory.CreateDirectory(autoScriptsPath);
+            }
+
+            string outputPath = Path.Combine(autoScriptsPath, $"{productCode}_{riderCode}.json");
+            File.WriteAllText(outputPath, JsonConvert.SerializeObject(scriptDict, Formatting.Indented));
+            SetScript(scriptDict);
+        }
+
         public List<double> GetAssumptionRate(params string[] keys)
         {
             string lookupKey = string.Join("|", keys.Where(key => !string.IsNullOrWhiteSpace(key)));
@@ -280,8 +369,9 @@ namespace ActuLiteModel
             {
                 foreach (var assumption in assumptionsForKey)
                 {
-                    if (string.IsNullOrWhiteSpace(assumption.Condition) ||
-                        (BoolExpressions.TryGetValue(assumption.Condition, out var compiledExpression) && compiledExpression.Evaluate()))
+                    if (BoolExpressions.TryGetValue(assumption.Condition1, out var expr1) && expr1.Evaluate() &&
+                        BoolExpressions.TryGetValue(assumption.Condition2, out var expr2) && expr2.Evaluate() &&
+                        BoolExpressions.TryGetValue(assumption.Condition3, out var expr3) && expr3.Evaluate())
                     {
                         return assumption.Rates;
                     }
@@ -311,18 +401,13 @@ namespace ActuLiteModel
 
             foreach (var expense in expensesForKey)
             {
-                IGenericExpression<bool> compiledExpression;
-                if (string.IsNullOrWhiteSpace(expense.Condition) ||
-                    (BoolExpressions.TryGetValue(expense.Condition, out compiledExpression) && compiledExpression.Evaluate()))
+                if (BoolExpressions.TryGetValue(expense.Condition1, out var expr1) && expr1.Evaluate() &&
+                    BoolExpressions.TryGetValue(expense.Condition2, out var expr2) && expr2.Evaluate() &&
+                    BoolExpressions.TryGetValue(expense.Condition3, out var expr3) && expr3.Evaluate())
                 {
                     var formula = GetExpenseFormula(expense, expenseType);
-                    if (string.IsNullOrWhiteSpace(formula))
-                    {
-                        return 0;
-                    }
 
-                    IGenericExpression<double> compiledFormula;
-                    if (DoubleExpressions.TryGetValue(formula, out compiledFormula))
+                    if (DoubleExpressions.TryGetValue(formula, out var compiledFormula))
                     {
                         return compiledFormula.Evaluate();
                     }
@@ -339,7 +424,7 @@ namespace ActuLiteModel
             switch (expenseType)
             {
                 case "Alpha_P": return expense.Alpha_P;
-                case "Alpha_P2": return expense.Alpha_P;
+                case "Alpha_P2": return expense.Alpha_P2;
                 case "Alpha_S": return expense.Alpha_S;
                 case "Alpha_P20": return expense.Alpha_P20;
                 case "Beta_P": return expense.Beta_P;
@@ -349,6 +434,7 @@ namespace ActuLiteModel
                 case "BetaPrime_S": return expense.BetaPrime_S;
                 case "BetaPrime_Fix": return expense.BetaPrime_Fix;
                 case "Gamma": return expense.Gamma;
+                case "Ce": return expense.Ce;
                 case "Refund_P": return expense.Refund_P;
                 case "Refund_S": return expense.Refund_S;
                 case "Etc1": return expense.Etc1;
@@ -362,16 +448,19 @@ namespace ActuLiteModel
 
         public IGenericExpression<bool> CompileBool(string expression)
         {
-            if (string.IsNullOrWhiteSpace(expression))
-            {
-                return Context.CompileGeneric<bool>("true");
-            }
-
             if (!BoolExpressions.TryGetValue(expression, out var compiledExpression))
             {
                 try
                 {
-                    compiledExpression = Context.CompileGeneric<bool>(expression);
+                    if (string.IsNullOrWhiteSpace(expression))
+                    {
+                        compiledExpression = Context.CompileGeneric<bool>("true");
+                    }
+                    else
+                    {
+                        compiledExpression = Context.CompileGeneric<bool>(expression);
+                    }         
+                    
                     BoolExpressions[expression] = compiledExpression;
                 }
                 catch
@@ -385,16 +474,19 @@ namespace ActuLiteModel
 
         public IGenericExpression<double> CompileDouble(string expression)
         {
-            if (string.IsNullOrWhiteSpace(expression))
-            {
-                return Context.CompileGeneric<double>("0");
-            }
-
             if (!DoubleExpressions.TryGetValue(expression, out var compiledExpression))
             {
                 try
                 {
-                    compiledExpression = Context.CompileGeneric<double>(expression);
+                    if (string.IsNullOrWhiteSpace(expression))
+                    {
+                        compiledExpression = Context.CompileGeneric<double>("0");
+                    }
+                    else
+                    {
+                        compiledExpression = Context.CompileGeneric<double>(FormulaTransformationUtility.TransformIfs(expression));
+                    }
+
                     DoubleExpressions[expression] = compiledExpression;
                 }
                 catch
@@ -408,16 +500,19 @@ namespace ActuLiteModel
 
         public IGenericExpression<int> CompileInt(string expression)
         {
-            if (string.IsNullOrWhiteSpace(expression))
-            {
-                return Context.CompileGeneric<int>("0");
-            }
-
             if (!IntExpressions.TryGetValue(expression, out var compiledExpression))
             {
                 try
                 {
-                    compiledExpression = Context.CompileGeneric<int>(expression);
+                    if (string.IsNullOrWhiteSpace(expression))
+                    {
+                        compiledExpression = Context.CompileGeneric<int>("0");
+                    }
+                    else
+                    {
+                        compiledExpression = Context.CompileGeneric<int>(FormulaTransformationUtility.TransformIfs(expression));
+                    }
+
                     IntExpressions[expression] = compiledExpression;
                 }
                 catch
@@ -431,16 +526,19 @@ namespace ActuLiteModel
 
         public IGenericExpression<string> CompileString(string expression)
         {
-            if (string.IsNullOrWhiteSpace(expression))
-            {
-                return Context.CompileGeneric<string>($"\"\"");
-            }
-
             if (!StringExpressions.TryGetValue(expression, out var compiledExpression))
             {
                 try
                 {
-                    compiledExpression = Context.CompileGeneric<string>(expression);
+                    if (string.IsNullOrWhiteSpace(expression))
+                    {
+                        compiledExpression = Context.CompileGeneric<string>($"\"\"");
+                    }
+                    else
+                    {
+                        compiledExpression = Context.CompileGeneric<string>(FormulaTransformationUtility.TransformIfs(expression));
+                    }
+                    
                     StringExpressions[expression] = compiledExpression;
                 }
                 catch
@@ -454,16 +552,19 @@ namespace ActuLiteModel
 
         public IDynamicExpression CompileDynamic(string expression)
         {
-            if (string.IsNullOrWhiteSpace(expression))
-            {
-                return Context.CompileDynamic("");
-            }
-
             if (!DynamicExpressions.TryGetValue(expression, out var compiledExpression))
             {
                 try
                 {
-                    compiledExpression = Context.CompileDynamic(expression);
+                    if (string.IsNullOrWhiteSpace(expression))
+                    {
+                        compiledExpression = Context.CompileDynamic("");
+                    }
+                    else
+                    {
+                        compiledExpression = Context.CompileDynamic(expression);
+                    }
+
                     DynamicExpressions[expression] = compiledExpression;
                 }
                 catch
@@ -502,7 +603,7 @@ namespace ActuLiteModel
             return result;
         }
 
-        private static string TransformIfs(string input)
+        public static string TransformIfs(string input)
         {
             string ifsPattern = @"Ifs\((.+)\)";
             return Regex.Replace(input, ifsPattern, match =>
@@ -875,6 +976,7 @@ namespace ActuLiteModel
                 else if (property.Name.StartsWith("Alpha") ||
                          property.Name.StartsWith("Beta") ||
                          property.Name.StartsWith("Gamma") ||
+                         property.Name.StartsWith("Ce") ||
                          property.Name.StartsWith("Refund") ||
                          property.Name.StartsWith("Etc"))
                 {
@@ -1056,5 +1158,149 @@ namespace ActuLiteModel
         }
     }
 
+    public class TemplateProcessor
+    {
+        private const string START_DELIMITER = "<-";
+        private const string END_DELIMITER = "->";
 
+        private readonly Dictionary<string, string> replacementRules;
+
+        public TemplateProcessor(Dictionary<string, string> rules)
+        {
+            replacementRules = rules;
+        }
+
+        // 템플릿에서 키와 패턴 정보 추출
+        private List<(string key, string fullMatch, string pattern, string value1, string value2)> ExtractKeys(string template)
+        {
+            var keys = new List<(string key, string fullMatch, string pattern, string value1, string value2)>();
+
+            // 패턴들:
+            // 1. <-key->            : required
+            // 2. <-key?->           : optional-empty
+            // 3. <-key?  val1->     : optional-value
+            // 4. <-key?  val1:val2->: optional-both
+            string pattern = $"{Regex.Escape(START_DELIMITER)}([^-?]+)(\\?)?\\s*([^:->]+)?(?::\\s*([^->]+))?{Regex.Escape(END_DELIMITER)}";
+
+            foreach (Match match in Regex.Matches(template, pattern))
+            {
+                string key = match.Groups[1].Value.Trim();
+                bool isOptional = match.Groups[2].Success;
+                string value1 = match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
+                string value2 = match.Groups[4].Success ? match.Groups[4].Value.Trim() : null;
+
+                string patternType = !isOptional ? "required" :
+                                   value1 == null ? "optional-empty" :
+                                   value2 == null ? "optional-value" : "optional-both";
+
+                keys.Add((key, match.Value, patternType, value1, value2));
+            }
+
+            return keys;
+        }
+
+        // 여러 라인의 템플릿 처리
+        public List<string> ProcessTemplates(List<string> templates)
+        {
+            var results = new List<string>();
+
+            foreach (var template in templates)
+            {
+                var processedLine = ProcessTemplate(template);
+                if (processedLine != null)
+                {
+                    results.Add(processedLine);
+                }
+            }
+
+            return results;
+        }
+
+        // 여러 라인의 템플릿을 스크립트 형태로 변환
+        public Dictionary<string, string> ProcessTemplateToScripts(List<string> templates)
+        {
+            var result = new Dictionary<string, string>();
+            var currentKey = "";
+            var currentScript = new List<string>();
+
+            foreach (var line in templates)
+            {
+                // 키 라인 패턴 확인
+                var keyMatch = Regex.Match(line, @"^<<(\w+)>>$");
+                if (keyMatch.Success)
+                {
+                    // 이전 스크립트가 있으면 저장
+                    if (currentKey != "" && currentScript.Count > 0)
+                    {
+                        var processedScript = ProcessTemplates(currentScript);
+                        if (processedScript.Any())
+                        {
+                            result[currentKey] = string.Join(Environment.NewLine, processedScript);
+                        }
+                        currentScript.Clear();
+                    }
+
+                    currentKey = keyMatch.Groups[1].Value;
+                }
+                else if (currentKey != "") // 키가 설정된 후의 라인들만 수집
+                {
+                    currentScript.Add(line);
+                }
+            }
+
+            // 마지막 스크립트 처리
+            if (currentKey != "" && currentScript.Count > 0)
+            {
+                var processedScript = ProcessTemplates(currentScript);
+                if (processedScript.Any())
+                {
+                    result[currentKey] = string.Join(Environment.NewLine, processedScript);
+                }
+            }
+
+            return result;
+        }
+
+        // 단일 라인 템플릿 처리
+        private string ProcessTemplate(string template)
+        {
+            if (string.IsNullOrEmpty(template)) return template;
+
+            string result = template;
+
+            foreach (var (key, fullMatch, pattern, value1, value2) in ExtractKeys(template))
+            {
+                bool hasValue = replacementRules.TryGetValue(key, out string value);
+
+                switch (pattern)
+                {
+                    case "required": // <-key->
+                        if (!hasValue)
+                        {
+                            return null; // 라인 제외
+                        }
+                        result = result.Replace(fullMatch, value);
+                        break;
+
+                    case "optional-empty": // <-key?->
+                        if (!hasValue)
+                        {
+                            return null; // 라인 제외
+                        }
+                        result = result.Replace(fullMatch, ""); // 공백으로 치환
+                        break;
+
+                    case "optional-value": // <-key?  val1->
+                        result = result.Replace(fullMatch, hasValue ? value1 : "");
+                        break;
+
+                    case "optional-both": // <-key?  val1:val2->
+                        result = result.Replace(fullMatch, hasValue ? value1 : value2);
+                        break;
+                }
+            }
+
+            return result;
+        }
+    }
 }

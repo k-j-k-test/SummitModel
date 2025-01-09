@@ -13,8 +13,11 @@
     "RoundDown",
     "RoundUp",
     "RoundA",
+    "RoundC",
     "ExData",
-    "Exp"
+    "Exp",
+    "D",
+    "U"
   ],
   "CellCompletions": {
     "q1": "Assum(\"mort\")",

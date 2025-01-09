@@ -47,9 +47,15 @@ public class ModelWriter
             ? $"{productCode}_{table}"
             : $"{productCode}_{table}_{riderCode}";
 
-        var outputFileName = Path.Combine(folderPath, $"{fileName}_Output.txt");
-        var errorFileName = Path.Combine(folderPath, $"{fileName}_Errors.txt");
-        bool hasErrors = false;
+        // 출력 폴더 생성
+        string outputFolder = Path.Combine(folderPath, "Outputs");
+        if (!Directory.Exists(outputFolder))
+        {
+            Directory.CreateDirectory(outputFolder);
+        }
+
+        var outputFileName = Path.Combine(folderPath, "Outputs", $"{fileName}_Output.txt");
+        var errorFileName = Path.Combine(folderPath, "Outputs", $"{fileName}_Errors.txt");
 
         using (var outputWriter = new StreamWriter(outputFileName))
         using (var errorWriter = new StreamWriter(errorFileName))
@@ -61,6 +67,18 @@ public class ModelWriter
                 var outputs = GetOutputs(table, productCode, rider);
 
                 if (outputs.Count == 0) continue;
+
+                // 각 라이더 엔트리에 대해 스크립트 템플릿 처리
+                try
+                {
+                    string scriptsBasePath = Path.Combine(folderPath, "Scripts");
+                    _modelEngine.ProcessScriptTemplate(productCode, rider, scriptsBasePath);
+                }
+                catch (Exception ex)
+                {
+                    // 스크립트 처리 실패 시에도 계속 진행
+                    StatusQueue.Enqueue($"Script processing failed for {productCode}_{rider}: {ex.Message}");
+                }
 
                 if (riderEntry.Key == modelPointsByRider.Keys.First())
                 {
@@ -96,7 +114,6 @@ public class ModelWriter
                         catch (Exception ex)
                         {
                             WriteError(errorWriter, point);
-                            hasErrors = true;
                             ErrorPoints++;
                         }
                         finally
@@ -119,28 +136,56 @@ public class ModelWriter
 
     private void WriteResultsForPoint(StreamWriter writer, List<Input_output> outputs, List<object> point)
     {
-        var results = new List<string>();
+        // For range operator '~', we need to handle multiple rows
+        var allRangeResults = new List<List<string>>();
+        var maxRows = 1;
 
+        // First pass: calculate all results and determine the maximum number of rows
         foreach (var output in outputs)
         {
+            var columnResults = new List<string>();
             string transformedExpression = FormulaTransformationUtility.TransformText(output.Value, "DummyModel");
 
-            // 범위가 있는 경우
             if (!string.IsNullOrEmpty(output.Range))
             {
                 var rangeValues = CalculateRangeValues(transformedExpression, output.Range);
-                results.Add(string.Join(Delimiter, FormatValues(rangeValues, output.Format)));
+                // For ~ operator, each value should be on a separate row
+                if (output.Range.Contains("~"))
+                {
+                    columnResults.AddRange(rangeValues.Select(v => FormatValue(v, output.Format)));
+                    maxRows = Math.Max(maxRows, rangeValues.Count);
+                }
+                // For ... operator, all values should be on one row
+                else if (output.Range.Contains("..."))
+                {
+                    columnResults.Add(string.Join(Delimiter, FormatValues(rangeValues, output.Format)));
+                }
             }
             else
             {
-                // 단일 값인 경우
+                // Single value case
                 var dynamicExpression = _modelEngine.CompileDynamic(transformedExpression);
                 object value = dynamicExpression.Evaluate();
-                results.Add(FormatValue(value, output.Format));
+                columnResults.Add(FormatValue(value, output.Format));
             }
+
+            allRangeResults.Add(columnResults);
         }
 
-        writer.WriteLine(string.Join(Delimiter, results));
+        // Second pass: write the results row by row
+        for (int row = 0; row < maxRows; row++)
+        {
+            var rowResults = new List<string>();
+
+            for (int col = 0; col < outputs.Count; col++)
+            {
+                var columnValues = allRangeResults[col];
+                // If this column has a value for this row, use it; otherwise repeat the last value
+                rowResults.Add(row < columnValues.Count ? columnValues[row] : columnValues.Last());
+            }
+
+            writer.WriteLine(string.Join(Delimiter, rowResults));
+        }
     }
 
     private List<Input_output> GetOutputs(string table, string productCode, string riderCode)
@@ -221,24 +266,54 @@ public class ModelWriter
     {
         var results = new List<object>();
 
-        // 범위 파싱 (start~end 또는 start...end 형식)
-        var rangeParts = range.Split(new[] { "~", "..." }, StringSplitOptions.RemoveEmptyEntries);
-        if (rangeParts.Length == 2)
+        // Check which delimiter is used
+        bool isExpandedFormat = range.Contains("~");
+        bool isConcatenatedFormat = range.Contains("...");
+
+        if (isExpandedFormat)
         {
-            // 범위의 시작과 끝 계산
-            var startExpression = _modelEngine.CompileDynamic(rangeParts[0].Trim());
-            var endExpression = _modelEngine.CompileDynamic(rangeParts[1].Trim());
-
-            int start = (int)startExpression.Evaluate();
-            int end = (int)endExpression.Evaluate();
-
-            // 범위 내의 각 값 계산
-            var valueExpression = _modelEngine.CompileDynamic(expression);
-            for (int t = start; t <= end; t++)
+            // Handle ~ format: creates multiple rows
+            var rangeParts = range.Split('~');
+            if (rangeParts.Length == 2)
             {
-                _modelEngine.Context.Variables["t"] = t;
-                var value = valueExpression.Evaluate();
-                results.Add(value);
+                var startExpression = _modelEngine.CompileDynamic(rangeParts[0].Trim());
+                var endExpression = _modelEngine.CompileDynamic(rangeParts[1].Trim());
+
+                int start = (int)startExpression.Evaluate();
+                int end = (int)endExpression.Evaluate();
+
+                // Create a row for each value in the range
+                for (int t = start; t <= end; t++)
+                {
+                    _modelEngine.Context.Variables["t"] = t;
+                    var value = _modelEngine.CompileDynamic(expression).Evaluate();
+                    results.Add(value);
+                }
+            }
+        }
+        else if (isConcatenatedFormat)
+        {
+            // Handle ... format: creates a single concatenated string
+            var rangeParts = range.Split(new[] { "..." }, StringSplitOptions.RemoveEmptyEntries);
+            if (rangeParts.Length == 2)
+            {
+                var startExpression = _modelEngine.CompileDynamic(rangeParts[0].Trim());
+                var endExpression = _modelEngine.CompileDynamic(rangeParts[1].Trim());
+
+                int start = (int)startExpression.Evaluate();
+                int end = (int)endExpression.Evaluate();
+
+                // Build a single comma-separated string
+                var values = new List<string>();
+                for (int t = start; t <= end; t++)
+                {
+                    _modelEngine.Context.Variables["t"] = t;
+                    var value = _modelEngine.CompileDynamic(expression).Evaluate();
+                    values.Add(value.ToString());
+                }
+
+                // Add the concatenated string as a single result
+                results.Add(string.Join(",", values));
             }
         }
 

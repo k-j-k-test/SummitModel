@@ -11,8 +11,8 @@
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Horizontal" Margin="5">
-            <Button x:Name="StartButton" Content="시작" Click="Start_Click" Margin="0,0,5,0"/>
-            <Button x:Name="CancelButton" Content="취소" Click="Cancel_Click"/>
+            <Button x:Name="StartButton" Content="시작" Width="75" Click="Start_Click" Margin="0,0,10,0" Background="#007ACC" Foreground="White" FontWeight="Bold"/>
+            <Button x:Name="CancelButton" Content="취소" Width="75" Click="Cancel_Click"/>
             <TextBlock Text="구분자" FontSize="13" VerticalAlignment="Center" Margin="30,0,0,0"/>
             <ComboBox x:Name="DelimiterComboBox" SelectionChanged="DelimiterComboBox_SelectionChanged" 
               Width="150" SelectedIndex="0" Margin="10,0,0,0">
@@ -26,10 +26,10 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="5">
-            <TextBlock Text="ProductCode:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <TextBox x:Name="ProductCodeFilterBox" Width="100" TextChanged="FilterBox_TextChanged" Margin="0,0,10,0"/>
-            <TextBlock Text="RiderCode:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <TextBox x:Name="RiderCodeFilterBox" Width="100" TextChanged="FilterBox_TextChanged"/>
+            <TextBlock Text="ProductCode" VerticalAlignment="Center" Margin="10,0,10,0"/>
+            <TextBox x:Name="ProductCodeFilterBox" Width="150" TextChanged="FilterBox_TextChanged" Margin="0,0,10,0"/>
+            <TextBlock Text="RiderCode" VerticalAlignment="Center" Margin="20,0,10,0"/>
+            <TextBox x:Name="RiderCodeFilterBox" Width="150" TextChanged="FilterBox_TextChanged"/>
         </StackPanel>
 
         <TabControl x:Name="OutputTabControl" Grid.Row="2" MinHeight="200">

@@ -1,0 +1,131 @@
+<<PV>>
+//이율
+i -- <-i->
+v -- 1/(1+i[t])
+v_t -- If(t=0, 1, v_t[t-1] * v[t])
+v_t_mid -- v_t[t] * v[t]^(0.5)
+
+//해지율
+w -- <-w->
+
+//위험률
+q1 -- <-q1->
+q2 -- <-q2->
+q3 -- <-q3->
+q4 -- <-q4->
+q5 -- <-q5->
+q6 -- <-q6->
+q7 -- <-q7->
+q8 -- <-q8->
+q9 -- <-q9->
+q10 -- <-q10->
+q11 -- <-q11->
+q12 -- <-q12->
+q13 -- <-q13->
+q14 -- <-q14->
+q15 -- <-q15->
+q16 -- <-q16->
+q17 -- <-q17->
+q18 -- <-q18->
+q19 -- <-q19->
+q20 -- <-q20->
+q21 -- <-q21->
+q22 -- <-q22->
+q23 -- <-q23->
+q24 -- <-q24->
+q25 -- <-q25->
+q26 -- <-q26->
+q27 -- <-q27->
+q28 -- <-q28->
+q29 -- <-q29->
+q30 -- <-q30->
+
+//기수표
+lx_Payment -- If(t=0, 100000, lx_Payment[t-1] * (<-lx_Payment->)) 
+lx_Inforce -- If(t=0, 100000, lx_Inforce[t-1] * (<-lx_Inforce->)) 
+lx_Inforce1 -- If(t=0, 100000, lx_Inforce1[t-1] * (<-lx_Inforce1->))
+lx_Inforce2 -- If(t=0, 100000, lx_Inforce2[t-1] * (<-lx_Inforce2->))
+lx_Inforce3 -- If(t=0, 100000, lx_Inforce3[t-1] * (<-lx_Inforce3->))
+lx_Inforce4 -- If(t=0, 100000, lx_Inforce4[t-1] * (<-lx_Inforce4->))
+lx_Inforce5 -- If(t=0, 100000, lx_Inforce5[t-1] * (<-lx_Inforce5->))
+lx_Inforce6 -- If(t=0, 100000, lx_Inforce6[t-1] * (<-lx_Inforce6->))
+lx_Inforce7 -- If(t=0, 100000, lx_Inforce7[t-1] * (<-lx_Inforce7->))
+lx_Inforce8 -- If(t=0, 100000, lx_Inforce8[t-1] * (<-lx_Inforce8->))
+lx_Inforce9 -- If(t=0, 100000, lx_Inforce9[t-1] * (<-lx_Inforce9->))
+lx_Inforce10 -- If(t=0, 100000, lx_Inforce10[t-1] * (<-lx_Inforce10->))
+
+Dx_Payment -- lx_Payment[t] * v_t[t]
+Dx_Inforce -- lx_Inforce[t] * v_t[t]
+Dx_Inforce1 -- lx_Inforce1[t] * v_t[t] <-lx_Inforce1?->
+Dx_Inforce2 -- lx_Inforce2[t] * v_t[t] <-lx_Inforce2?->
+Dx_Inforce3 -- lx_Inforce3[t] * v_t[t] <-lx_Inforce3?->
+Dx_Inforce4 -- lx_Inforce4[t] * v_t[t] <-lx_Inforce4?->
+Dx_Inforce5 -- lx_Inforce5[t] * v_t[t] <-lx_Inforce5?->
+Dx_Inforce6 -- lx_Inforce6[t] * v_t[t] <-lx_Inforce6?->
+Dx_Inforce7 -- lx_Inforce7[t] * v_t[t] <-lx_Inforce7?->
+Dx_Inforce8 -- lx_Inforce8[t] * v_t[t] <-lx_Inforce8?->
+Dx_Inforce9 -- lx_Inforce9[t] * v_t[t] <-lx_Inforce9?->
+Dx_Inforce10 -- lx_Inforce10[t] * v_t[t] <-lx_Inforce10?->
+
+Nx_Payment -- If(t>n, 0, Nx_Payment[t+1] + Dx_Payment[t])
+Nx_Inforce -- If(t>n, 0, Nx_Inforce[t+1] + Dx_Inforce[t])
+Nx_Inforce1 -- If(t>n, 0, Nx_Inforce1[t+1] + Dx_Inforce1[t]) <-lx_Inforce1?->
+Nx_Inforce2 -- If(t>n, 0, Nx_Inforce2[t+1] + Dx_Inforce2[t]) <-lx_Inforce2?->
+Nx_Inforce3 -- If(t>n, 0, Nx_Inforce3[t+1] + Dx_Inforce3[t]) <-lx_Inforce3?->
+Nx_Inforce4 -- If(t>n, 0, Nx_Inforce4[t+1] + Dx_Inforce4[t]) <-lx_Inforce4?->
+Nx_Inforce5 -- If(t>n, 0, Nx_Inforce5[t+1] + Dx_Inforce5[t]) <-lx_Inforce5?->
+Nx_Inforce6 -- If(t>n, 0, Nx_Inforce6[t+1] + Dx_Inforce6[t]) <-lx_Inforce6?->
+Nx_Inforce7 -- If(t>n, 0, Nx_Inforce7[t+1] + Dx_Inforce7[t]) <-lx_Inforce7?->
+Nx_Inforce8 -- If(t>n, 0, Nx_Inforce8[t+1] + Dx_Inforce8[t]) <-lx_Inforce8?->
+Nx_Inforce9 -- If(t>n, 0, Nx_Inforce9[t+1] + Dx_Inforce9[t]) <-lx_Inforce9?->
+Nx_Inforce10 -- If(t>n, 0, Nx_Inforce10[t+1] + Dx_Inforce10[t]) <-lx_Inforce10?->
+
+Cx_Benefit1 -- <-Benefit1-> * lx_Inforce<-lx_Inforce1? 1 ->[t] * v_t_mid[t]
+Cx_Benefit2 -- <-Benefit2-> * lx_Inforce<-lx_Inforce2? 2 ->[t] * v_t_mid[t]
+Cx_Benefit3 -- <-Benefit3-> * lx_Inforce<-lx_Inforce3? 3 ->[t] * v_t_mid[t]
+Cx_Benefit4 -- <-Benefit4-> * lx_Inforce<-lx_Inforce4? 4 ->[t] * v_t_mid[t]
+Cx_Benefit5 -- <-Benefit5-> * lx_Inforce<-lx_Inforce5? 5 ->[t] * v_t_mid[t]
+Cx_Benefit6 -- <-Benefit6-> * lx_Inforce<-lx_Inforce6? 6 ->[t] * v_t_mid[t]
+Cx_Benefit7 -- <-Benefit7-> * lx_Inforce<-lx_Inforce7? 7 ->[t] * v_t_mid[t]
+Cx_Benefit8 -- <-Benefit8-> * lx_Inforce<-lx_Inforce8? 8 ->[t] * v_t_mid[t]
+Cx_Benefit9 -- <-Benefit9-> * lx_Inforce<-lx_Inforce9? 9 ->[t] * v_t_mid[t]
+Cx_Benefit10 -- <-Benefit10-> * lx_Inforce<-lx_Inforce10? 10 ->[t] * v_t_mid[t]
+Cx_Benefit_Payment -- <-Benefit_Payment-> * lx_Payment[t] * v_t_mid[t]
+Cx_Benefit_Waiver -- <-Benefit_Waiver-> * (lx_Inforce[t]-lx_Payment[t]) * v_t_mid[t]
+
+Mx_Benefit1 -- If(t>n, 0, Mx_Benefit1[t+1] + Cx_Benefit1[t]) <-Benefit1?->
+Mx_Benefit2 -- If(t>n, 0, Mx_Benefit2[t+1] + Cx_Benefit2[t]) <-Benefit2?->
+Mx_Benefit3 -- If(t>n, 0, Mx_Benefit3[t+1] + Cx_Benefit3[t]) <-Benefit3?->
+Mx_Benefit4 -- If(t>n, 0, Mx_Benefit4[t+1] + Cx_Benefit4[t]) <-Benefit4?->
+Mx_Benefit5 -- If(t>n, 0, Mx_Benefit5[t+1] + Cx_Benefit5[t]) <-Benefit5?->
+Mx_Benefit6 -- If(t>n, 0, Mx_Benefit6[t+1] + Cx_Benefit6[t]) <-Benefit6?->
+Mx_Benefit7 -- If(t>n, 0, Mx_Benefit7[t+1] + Cx_Benefit7[t]) <-Benefit7?->
+Mx_Benefit8 -- If(t>n, 0, Mx_Benefit8[t+1] + Cx_Benefit8[t]) <-Benefit8?->
+Mx_Benefit9 -- If(t>n, 0, Mx_Benefit9[t+1] + Cx_Benefit9[t]) <-Benefit9?->
+Mx_Benefit10 -- If(t>n, 0, Mx_Benefit10[t+1] + Cx_Benefit10[t]) <-Benefit10?->
+Mx_Benefit_Payment -- If(t>n, 0, Mx_Benefit_Payment[t+1] + Cx_Benefit_Payment[t]) <-Benefit_Inforce?->
+Mx_Benefit_Waiver -- If(t>n, 0, Mx_Benefit_Waiver[t+1] + Cx_Benefit_Waiver[t]) <-Benefit_Waiver?->
+Mx_Sum -- <-Benefit1? Mx_Benefit1[t] -> <-Benefit2?  + Mx_Benefit2[t] -> <-Benefit3? + Mx_Benefit3[t] -> <-Benefit4?  + Mx_Benefit4[t] -> <-Benefit5? + Mx_Benefit5[t] -> <-Benefit6? + Mx_Benefit6[t] -> <-Benefit7? + Mx_Benefit7[t] -> <-Benefit8? + Mx_Benefit8[t] -> <-Benefit9? + Mx_Benefit9[t] -> <-Benefit10?  + Mx_Benefit10[t] -> <-Benefit_Inforce? + Mx_Benefit_Payment[t] -> <-Benefit_Waiver?  + Mx_Benefit_Waiver[t] ->
+
+//PV
+//mm - 1:연납, 2:6개월납, 4:3개월납, 6:2개월납, 12:월납, 99:일시납
+NStar -- mm * If(t<m, (Nx_Payment[t]-Nx_Payment[m]) - (mm-1.0)/(2.0*mm) * (Dx_Payment[t]-Dx_Payment[m]), 0)
+APV -- NStar[t] / Dx_Payment[t]
+
+NP99 -- (Mx_Sum[0]-Mx_Sum[n]) / Dx_Payment[0] 
+NP -- If(mm=99, NP99[0], (Mx_Sum[0]-Mx_Sum[n]) / NStar[0])
+NPSTD -- PV{n:Min(n,20), mm:1}.NP[t]
+
+BetaNP -- NP[0] + Exp("BetaPrime_S")*(Nx_Inforce[m]-Nx_Inforce[n])/If(mm=99, 100000, NStar[0])
+
+GP99 -- BetaNP[0] / (1 - Exp("Alpha_P") - Exp("Alpha_P2") - Exp("Beta_P") - Exp("Gamma") - Exp("Ce"))
+GP -- If(mm=99, GP99[0], (BetaNP[0] + (Exp("Alpha_S") + NPSTD[0] * Exp("Alpha_P20")) / APV[t] + Exp("Beta_S")/mm) / (1 - mm*Exp("Alpha_P")/APV[t] - Exp("Alpha_P2") - Exp("Beta_P") - Exp("Gamma") - Exp("Ce")))
+
+V99 -- (Mx_Sum[t] - Mx_Sum[n] + Exp("BetaPrime_S")*(Nx_Inforce[t]-Nx_Inforce[n])) / Dx_Inforce[t]
+V -- (Mx_Sum[t] - Mx_Sum[n] + Exp("BetaPrime_S")*(Nx_Inforce[Max(m,t)]-Nx_Inforce[n]) - PV{mm:1}.BetaNP[0] * PV{mm:1}.NStar[t]) / Dx_Inforce[t]
+
+TotalAlpha -- Exp("Alpha_S") + NPSTD[0] * Exp("Alpha_P20") + mm*Exp("Alpha_P")
+MinS -- 0
+STDAlpha -- Ifs(Stype = 1, (0.05*Min(n,20)+0.45)*NPSTD[0], Stype = 2, 0.05*Min(n,20)*NPSTD[0]+0.01*MinS[0], Stype=3, (0.05*Min(n,20)+0.15)*NPSTD[0], 0)*If(Channel>0, 0.7, 1)
+
+W -- V[t] - If( t<Min(7,m), Min(TotalAlpha[0], STDAlpha[0]*(Min(7,m)-t)*1.0/Min(7,m)), 0)

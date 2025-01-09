@@ -19,7 +19,11 @@ namespace ActuLiteModel
         public string Key1 { get; set; }
         public string Key2 { get; set; }
         public string Key3 { get; set; }
-        public string Condition { get; set; }
+
+        public string Condition1 { get; set; }
+        public string Condition2 { get; set; }
+        public string Condition3 { get; set; }
+
         public List<double> Rates { get; set; }
     }
 
@@ -27,7 +31,11 @@ namespace ActuLiteModel
     {
         public string ProductCode { get; set; }
         public string RiderCode { get; set; }
-        public string Condition { get; set; }
+
+        public string Condition1 { get; set; }
+        public string Condition2 { get; set; }
+        public string Condition3 { get; set; }
+
         public string Alpha_P { get; set; }
         public string Alpha_P2 { get; set; }
         public string Alpha_S { get; set; }
@@ -39,6 +47,7 @@ namespace ActuLiteModel
         public string BetaPrime_S { get; set; }
         public string BetaPrime_Fix { get; set; }
         public string Gamma { get; set; }
+        public string Ce { get; set; }
         public string Refund_P { get; set; }
         public string Refund_S { get; set; }
         public string Etc1 { get; set; }

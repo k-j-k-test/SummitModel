@@ -35,26 +35,16 @@ namespace ActuLight
         private HashSet<string> _models = new HashSet<string>();
         private HashSet<string> _contextVariables = new HashSet<string>();
         private HashSet<string> _assumptions = new HashSet<string>();
-        private HashSet<string> _expenses = new HashSet<string>
-        {
-            "Alpha_P",
-            "Alpha_P2",
-            "Alpha_S",
-            "Alpha_P20",
-            "Beta_P",
-            "Beta_S",
-            "Beta_Fix",
-            "BetaPrime_P",
-            "BetaPrime_S",
-            "BetaPrime_Fix",
-            "Gamma",
-            "Refund_P",
-            "Refund_S",
-            "Etc1",
-            "Etc2",
-            "Etc3",
-            "Etc4"
-        };
+        private HashSet<string> _expenses = typeof(Input_exp)
+            .GetProperties()
+            .Where(p => p.Name.StartsWith("Alpha") ||
+                        p.Name.StartsWith("Beta") ||
+                        p.Name.StartsWith("Gamma") ||
+                        p.Name.StartsWith("Ce") ||
+                        p.Name.StartsWith("Refund") ||
+                        p.Name.StartsWith("Etc"))
+            .Select(p => p.Name)
+            .ToHashSet();
 
         private List<string> _functions = new List<string>();
         private Dictionary<string, string> _cellCompletions = new Dictionary<string, string>();

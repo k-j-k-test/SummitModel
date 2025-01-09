@@ -23,7 +23,7 @@ namespace ActuLight.Pages
         private string downloadUrl;
 
         private FileSystemWatcher fileWatcher;
-        private readonly string[] monitoringFiles = { "mp.txt", "assum.txt", "exp.txt", "out.txt" };
+        private readonly string[] monitoringFiles = { "mp.txt", "assum.txt", "exp.txt", "out.txt", "rule.txt" };
 
         private const string RecentFilesPath = "recentFiles.json";
         private ObservableCollection<RecentFile> recentFiles = new ObservableCollection<RecentFile>();
@@ -72,7 +72,7 @@ namespace ActuLight.Pages
                     Directory.CreateDirectory(projectPath);
 
                     // Create subdirectories
-                    string[] subDirectories = { "Inputs", "ExternalData", "Outputs", "Samples", "Scripts" };
+                    string[] subDirectories = { "Inputs", "ExternalData", "Outputs", "Samples", "Scripts", "Scripts\\Template", "Scripts\\CustomScripts", "Scripts\\AutoScripts"};
                     foreach (string dir in subDirectories)
                     {
                         Directory.CreateDirectory(Path.Combine(projectPath, dir));
@@ -97,6 +97,10 @@ namespace ActuLight.Pages
                         }
                     }
 
+                    string scriptsTemplateSourcePath = Path.Combine(resourcePath, "ScriptType1.txt");
+                    string scriptsTemplateDestPath = Path.Combine(projectPath, "Scripts\\Template\\ScriptType1.txt");
+                    File.Copy(scriptsTemplateSourcePath, scriptsTemplateDestPath);
+
                     // Create shortcut file (.smt)
                     string executablePath = Process.GetCurrentProcess().MainModule.FileName;
                     string shortcutPath = Path.Combine(projectPath, $"{projectName}.smt");
@@ -107,7 +111,7 @@ namespace ActuLight.Pages
                     }
 
                     // Copy Excel template
-                    string templatePath = Path.Combine(resourcePath, "ExcelData_Templete.xlsm");
+                    string templatePath = Path.Combine(resourcePath, "ExcelData_Template.xlsm");
                     string destinationPath = Path.Combine(projectPath, $"{projectName}.xlsm");
 
                     if (File.Exists(templatePath))
@@ -369,7 +373,8 @@ namespace ActuLight.Pages
                             { "mp.txt", ("Pages/ModelPointPage.xaml", typeof(ModelPointPage)) },
                             { "assum.txt", ("Pages/AssumptionPage.xaml", typeof(AssumptionPage)) },
                             { "exp.txt", ("Pages/AssumptionPage.xaml", typeof(AssumptionPage)) },
-                            { "out.txt", ("Pages/OutputPage.xaml", typeof(OutputPage)) }
+                            { "out.txt", ("Pages/OutputPage.xaml", typeof(OutputPage)) },
+                            { "rule.txt", ("Pages/AssumptionPage.xaml", typeof(AssumptionPage)) }
                        };
 
                         // 해당 파일에 대한 페이지 매핑이 있는 경우 업데이트 실행
@@ -388,6 +393,10 @@ namespace ActuLight.Pages
                                 if (pageInfo.pageType == typeof(AssumptionPage) && fileName == "exp.txt")
                                 {
                                     await (page as AssumptionPage).LoadExpenseDataAsync();
+                                }
+                                if (pageInfo.pageType == typeof(AssumptionPage) && fileName == "rule.txt")
+                                {
+                                    await (page as AssumptionPage).LoadScriptRuleDataAsync();
                                 }
                                 if (pageInfo.pageType == typeof(OutputPage))
                                 {

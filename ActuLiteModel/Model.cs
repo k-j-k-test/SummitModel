@@ -94,7 +94,6 @@ namespace ActuLiteModel
             Parameters = new Dictionary<string, object>();
             Sheets = new Dictionary<string, Sheet>();
         }
-
     }
 
     public class CompiledCell

@@ -24,11 +24,13 @@
   <ItemGroup>
     <None Remove="AutoCompletion.json" />
     <None Remove="Resources\assum.txt" />
-    <None Remove="Resources\ExcelData_Templete.xlsm" />
+    <None Remove="Resources\ExcelData_Template.xlsm" />
     <None Remove="Resources\exp.txt" />
     <None Remove="Resources\mp.txt" />
     <None Remove="Resources\NewProject_scripts_auto1.json" />
     <None Remove="Resources\out.txt" />
+    <None Remove="Resources\rule.txt" />
+    <None Remove="Resources\ScriptType1.txt" />
     <None Remove="risk_rates_postguide.xlsx" />
     <None Remove="version.json" />
   </ItemGroup>
@@ -40,7 +42,7 @@
     <EmbeddedResource Include="Resources\assum.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
-    <EmbeddedResource Include="Resources\ExcelData_Templete.xlsm">
+    <EmbeddedResource Include="Resources\ExcelData_Template.xlsm">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\exp.txt">
@@ -53,6 +55,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\out.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\ScriptType1.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="version.json">
@@ -81,6 +86,12 @@
   
   <ItemGroup>
     <EmbeddedResource Include="Resources\risk_rates_postguide.xlsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\rule.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
